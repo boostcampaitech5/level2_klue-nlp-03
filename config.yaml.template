@@ -14,3 +14,4 @@ train:
 dir:
   train_dir: ./data/train_data.csv
   test_dir: ./data/test_data.csv
+  result_dir: ./results/
