@@ -1,6 +1,7 @@
 data/
+results/
+config.yaml
 .cache/
-.config/
 .dotnet/
 .gitconfig
 .jupyter/
@@ -14,6 +15,7 @@ lightning_logs/
 wandb/
 *.pt
 *.csv
-*.txt
 *.ckpt
 *.pyc
+*.out
+playground.ipynb
