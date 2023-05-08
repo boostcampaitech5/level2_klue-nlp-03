@@ -1,0 +1,16 @@
+# 이 파일을 config.yaml로 이름을 변경하고 사용하세요.
+seed: 3
+num_workers: 8
+train:
+  model_name: klue/bert-base
+  batch_size: 16
+  epoch: 20
+  lr: 5e-5
+  loss: CrossEntropyLoss
+  optim: AdamW
+  max_len: 200
+  val_size: 0.1
+  patience: 5
+dir:
+  train_dir: ./data/train_data.csv
+  test_dir: ./data/test_data.csv
