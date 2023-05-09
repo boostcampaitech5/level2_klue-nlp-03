@@ -40,7 +40,8 @@ trainer = pl.Trainer(
         ModelCheckpoint(
             dirpath=cfg["dir"]["result_dir"] + result_name,
             filename="best_model",
-            monitor="val_loss",
+            monitor=cfg["train"]["best_model_monitor"],
+            mode="min" if cfg["train"]["best_model_monitor"] == "val_loss" else "max",
             save_top_k=1,
         ),
         EarlyStopping(
