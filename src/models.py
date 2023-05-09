@@ -16,6 +16,7 @@ class BaseModel(pl.LightningModule):
         self.lossF = eval("torch.nn." + cfg["train"]["loss"])()
         self.val_result = {
             "sentence": [],
+            "tokenized": [],
             "target": [],
             "predict": [],
         }
@@ -57,7 +58,6 @@ class BaseModel(pl.LightningModule):
             input_ids=batch["input_ids"].squeeze(),
             token_type_ids=batch["token_type_ids"].squeeze(),
             attention_mask=batch["attention_mask"].squeeze(),
-            labels=batch["labels"],
         )
 
         metrics = self.compute_metrics(output, batch["labels"])
@@ -72,14 +72,12 @@ class BaseModel(pl.LightningModule):
             input_ids=batch["input_ids"].squeeze(),
             token_type_ids=batch["token_type_ids"].squeeze(),
             attention_mask=batch["attention_mask"].squeeze(),
-            labels=batch["labels"],
         )
 
         # 원래 문장, 원래 target, 모델의 prediction을 저장
-        self.val_result["sentence"].extend(
-            self.tokenizer.batch_decode(
-                batch["input_ids"].squeeze(), skip_special_tokens=True
-            )
+        self.val_result["sentence"].extend(batch["sentence"])
+        self.val_result["tokenized"].extend(
+            self.tokenizer.batch_decode(batch["input_ids"].squeeze())
         )
         self.val_result["target"].extend(batch["labels"].tolist())
         self.val_result["predict"].extend(
