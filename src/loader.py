@@ -102,6 +102,13 @@ class KLUEDataLoader(pl.LightningDataModule):
             num_workers=self.cfg["num_workers"],
         )
 
+    def test_dataloader(self):
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.cfg["train"]["batch_size"],
+            num_workers=self.cfg["num_workers"],
+        )
+
     def predict_dataloader(self):
         return DataLoader(
             self.predict_dataset,
