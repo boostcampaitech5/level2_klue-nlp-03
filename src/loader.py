@@ -52,46 +52,46 @@ class KLUEDataLoader(pl.LightningDataModule):
 
     def setup(self, stage: str):
         if stage == "fit":
-            total_df = load_data(self.cfg["dir"]["train_dir"])
+            total_df = load_data(self.cfg["train_dir"])
             total_df = preprocessing_dataset(total_df)
             train_df, val_df, _, _ = train_test_split(
                 total_df,
                 total_df["label"].values,
-                test_size=self.cfg["train"]["val_size"],
+                test_size=self.cfg["val_size"],
                 random_state=self.cfg["seed"],
             )
             self.train_dataset = KLUEDataset(train_df, self.tokenizer)
             self.val_dataset = KLUEDataset(val_df, self.tokenizer)
 
         if stage == "predict":
-            predict_df = load_data(self.cfg["dir"]["test_dir"])
+            predict_df = load_data(self.cfg["test_dir"])
             predict_df = preprocessing_dataset(predict_df)
             self.predict_dataset = KLUEDataset(predict_df, self.tokenizer)
 
     def train_dataloader(self):
         return DataLoader(
             self.train_dataset,
-            batch_size=self.cfg["train"]["batch_size"],
+            batch_size=self.cfg["batch_size"],
             num_workers=self.cfg["num_workers"],
         )
 
     def val_dataloader(self):
         return DataLoader(
             self.val_dataset,
-            batch_size=self.cfg["train"]["batch_size"],
+            batch_size=self.cfg["batch_size"],
             num_workers=self.cfg["num_workers"],
         )
 
     def test_dataloader(self):
         return DataLoader(
             self.val_dataset,
-            batch_size=self.cfg["train"]["batch_size"],
+            batch_size=self.cfg["batch_size"],
             num_workers=self.cfg["num_workers"],
         )
 
     def predict_dataloader(self):
         return DataLoader(
             self.predict_dataset,
-            batch_size=self.cfg["train"]["batch_size"],
+            batch_size=self.cfg["batch_size"],
             num_workers=self.cfg["num_workers"],
         )

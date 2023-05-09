@@ -127,7 +127,7 @@ def get_result_name() -> str:
     return now.strftime("%m-%d-%H-%M-%S")
 
 
-def remove_pad_tokens(sentences: list[str], pad_token: str) -> list[str]:
+def remove_pad_tokens(sentences: List[str], pad_token: str) -> List[str]:
     """pad token만 제거하는 함수입니다."""
     ret = [sentence.replace(" " + pad_token, "") for sentence in sentences]
     return ret

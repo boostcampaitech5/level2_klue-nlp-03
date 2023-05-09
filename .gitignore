@@ -1,6 +1,7 @@
 data/
 results/
 config.yaml
+sweep.yaml
 .cache/
 .dotnet/
 .gitconfig
@@ -10,9 +11,11 @@ config.yaml
 .profile
 .viminfo
 .vscode-server/
+.vscode
 .wget-hsts
 lightning_logs/
 wandb/
+__pycache__/
 *.pt
 *.csv
 *.ckpt
