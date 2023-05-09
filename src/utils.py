@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import sklearn
 from datetime import datetime, timezone, timedelta
+from typing import List
 
 
 def load_data(data_dir: str) -> pd.DataFrame:
@@ -12,7 +13,7 @@ def load_data(data_dir: str) -> pd.DataFrame:
     return df
 
 
-def label_to_num(label: list[str]) -> list[int]:
+def label_to_num(label: List[str]) -> List[int]:
     """문자열 class label을 숫자로 변환합니다."""
     num_label = []
     with open("./src/dict_label_to_num.pkl", "rb") as f:
@@ -23,7 +24,7 @@ def label_to_num(label: list[str]) -> list[int]:
     return num_label
 
 
-def num_to_label(label: list[int]) -> list[str]:
+def num_to_label(label: List[int]) -> List[str]:
     """숫자로 되어 있던 class를 원본 문자열 라벨로 변환 합니다."""
     origin_label = []
     with open("./src/dict_num_to_label.pkl", "rb") as f:
