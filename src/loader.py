@@ -3,11 +3,11 @@ import torch
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
-from utils import label_to_num, load_data
+from utils import label_to_num, load_data, preprocessing_dataset
 
 
 class KLUEDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, tokenizer, cfg: dict):
+    def __init__(self, df: pd.DataFrame, tokenizer):
         self.df = df
         self.label = label_to_num(df["label"].to_list())
         self.tokenizer = tokenizer
@@ -19,6 +19,7 @@ class KLUEDataset(Dataset):
         item = self.df.iloc[idx]
         tokenized_sentence = self.tokenize(item)
         ret_dict = {
+            "sentence": item["sentence"],
             "input_ids": tokenized_sentence["input_ids"],
             "token_type_ids": tokenized_sentence["token_type_ids"],
             "attention_mask": tokenized_sentence["attention_mask"],
@@ -49,44 +50,23 @@ class KLUEDataLoader(pl.LightningDataModule):
         self.tokenizer = tokenzier
         self.cfg = cfg
 
-    def preprocessing_dataset(self, df: pd.DataFrame) -> pd.DataFrame:
-        """처음 불러온 csv 파일을 원하는 형태의 DataFrame으로 변경 시켜줍니다."""
-        subject_entity = []
-        object_entity = []
-        for sub, obj in zip(df["subject_entity"], df["object_entity"]):
-            sub = eval(sub)
-            obj = eval(obj)
-            subject_entity.append(sub["word"])
-            object_entity.append(obj["word"])
-        out_dataset = pd.DataFrame(
-            {
-                "id": df["id"],
-                "sentence": df["sentence"],
-                "subject_entity": subject_entity,
-                "object_entity": object_entity,
-                "label": df["label"],
-            }
-        )
-
-        return out_dataset
-
     def setup(self, stage: str):
         if stage == "fit":
             total_df = load_data(self.cfg["dir"]["train_dir"])
-            total_df = self.preprocessing_dataset(total_df)
+            total_df = preprocessing_dataset(total_df)
             train_df, val_df, _, _ = train_test_split(
                 total_df,
                 total_df["label"].values,
                 test_size=self.cfg["train"]["val_size"],
                 random_state=self.cfg["seed"],
             )
-            self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg)
-            self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg)
+            self.train_dataset = KLUEDataset(train_df, self.tokenizer)
+            self.val_dataset = KLUEDataset(val_df, self.tokenizer)
 
         if stage == "predict":
             predict_df = load_data(self.cfg["dir"]["test_dir"])
-            predict_df = self.preprocessing_dataset(predict_df)
-            self.predict_dataset = KLUEDataset(predict_df, self.tokenizer, self.cfg)
+            predict_df = preprocessing_dataset(predict_df)
+            self.predict_dataset = KLUEDataset(predict_df, self.tokenizer)
 
     def train_dataloader(self):
         return DataLoader(

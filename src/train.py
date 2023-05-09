@@ -7,7 +7,7 @@ from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
-from utils import get_result_name, num_to_label
+from utils import get_result_name, num_to_label, remove_pad_tokens
 
 # load config
 with open("./config.yaml") as f:
@@ -60,7 +60,12 @@ trainer.test(model=model, datamodule=dataloader, ckpt_path="best")
 
 # validation data로 모델의 prediction 결과를 result 폴더에 csv파일로 저장합니다.
 val_result = model.val_result
+val_result["tokenized"] = remove_pad_tokens(
+    val_result["tokenized"], tokenizer.pad_token
+)
 val_result["target"] = num_to_label(val_result["target"])
 val_result["predict"] = num_to_label(val_result["predict"])
 val_result_df = pd.DataFrame(val_result)
-val_result_df.to_csv(cfg["dir"]["result_dir"] + result_name + "val_result.csv")
+val_result_df.to_csv(
+    cfg["dir"]["result_dir"] + result_name + "/val_result.csv", index=False
+)

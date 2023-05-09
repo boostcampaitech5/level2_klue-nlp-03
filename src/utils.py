@@ -34,6 +34,28 @@ def num_to_label(label: list[int]) -> list[str]:
     return origin_label
 
 
+def preprocessing_dataset(df: pd.DataFrame) -> pd.DataFrame:
+    """처음 불러온 csv 파일을 원하는 형태의 DataFrame으로 변경 시켜줍니다."""
+    subject_entity = []
+    object_entity = []
+    for sub, obj in zip(df["subject_entity"], df["object_entity"]):
+        sub = eval(sub)
+        obj = eval(obj)
+        subject_entity.append(sub["word"])
+        object_entity.append(obj["word"])
+    out_dataset = pd.DataFrame(
+        {
+            "id": df["id"],
+            "sentence": df["sentence"],
+            "subject_entity": subject_entity,
+            "object_entity": object_entity,
+            "label": df["label"],
+        }
+    )
+
+    return out_dataset
+
+
 def klue_re_micro_f1(preds, labels):
     """KLUE-RE micro f1 (except no_relation)"""
     label_list = [
@@ -101,4 +123,10 @@ def get_result_name() -> str:
     """한국 시간으로 result 이름을 반환합니다."""
     now = datetime.now(tz=timezone(timedelta(hours=9)))
 
-    return now.strftime("%m-%d-%H-%M-%S/")
+    return now.strftime("%m-%d-%H-%M-%S")
+
+
+def remove_pad_tokens(sentences: list[str], pad_token: str) -> list[str]:
+    """pad token만 제거하는 함수입니다."""
+    ret = [sentence.replace(" " + pad_token, "") for sentence in sentences]
+    return ret
