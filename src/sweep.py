@@ -13,14 +13,14 @@ if __name__=="__main__":
 
     sweep_id = wandb.sweep(
         sweep=cfg, 
-        entity="tjddn0402",
+        entity="ggul_tiger",
         project='KLUE',
     )
 
     wandb.agent(
         sweep_id, 
         function=main, 
-        entity="tjddn0402",
+        entity="ggul_tiger",
         project='KLUE',
         count=10
     )
