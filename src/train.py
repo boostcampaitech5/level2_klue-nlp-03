@@ -8,14 +8,15 @@ from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from utils import get_result_name, num_to_label, remove_pad_tokens
+from typing import Optional
 
-
-def train(cfg):
+def train(cfg, result_name :Optional[str] = None):
     # set random seed
     pl.seed_everything(cfg["seed"])
 
     # get result name
-    result_name = get_result_name()
+    if result_name is None:
+        result_name = get_result_name()
 
     tokenizer = AutoTokenizer.from_pretrained(
         cfg["model_name"], model_max_length=cfg["max_len"]

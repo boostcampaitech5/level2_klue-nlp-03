@@ -4,9 +4,10 @@ from train import train
 from utils import get_result_name
 
 def main():
-    with wandb.init(name=get_result_name()) as run:
+    result_name = get_result_name()
+    with wandb.init(name=result_name) as run:
         cfg=wandb.config
-        train(cfg)
+        train(cfg,result_name)
 
 if __name__=="__main__":
     with open("./sweep.yaml") as f:
