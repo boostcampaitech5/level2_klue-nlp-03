@@ -1,4 +1,3 @@
-from typing import Any
 import torch
 import pytorch_lightning as pl
 from transformers import AutoModelForSequenceClassification
@@ -15,6 +14,11 @@ class BaseModel(pl.LightningModule):
             cfg["train"]["model_name"], num_labels=30
         )
         self.lossF = eval("torch.nn." + cfg["train"]["loss"])()
+        self.val_result = {
+            "sentence": [],
+            "target": [],
+            "predict": [],
+        }
 
     def configure_optimizers(self):
         MyOptim = eval("torch.optim." + self.cfg["train"]["optim"])
@@ -40,7 +44,6 @@ class BaseModel(pl.LightningModule):
             input_ids=batch["input_ids"].squeeze(),
             token_type_ids=batch["token_type_ids"].squeeze(),
             attention_mask=batch["attention_mask"].squeeze(),
-            labels=batch["labels"],
         )
 
         loss = self.lossF(output.logits, batch["labels"])
@@ -63,3 +66,22 @@ class BaseModel(pl.LightningModule):
         self.log("val_micro_F1_score", metrics["micro_F1_score"])
         self.log("val_auprc", metrics["auprc"])
         self.log("val_accuracy", metrics["accuracy"])
+
+    def test_step(self, batch, batch_idx):
+        output = self.model(
+            input_ids=batch["input_ids"].squeeze(),
+            token_type_ids=batch["token_type_ids"].squeeze(),
+            attention_mask=batch["attention_mask"].squeeze(),
+            labels=batch["labels"],
+        )
+
+        # 원래 문장, 원래 target, 모델의 prediction을 저장
+        self.val_result["sentence"].extend(
+            self.tokenizer.batch_decode(
+                batch["input_ids"].squeeze(), skip_special_tokens=True
+            )
+        )
+        self.val_result["target"].extend(batch["labels"].tolist())
+        self.val_result["predict"].extend(
+            torch.argmax(output["logits"], dim=1).tolist()
+        )
