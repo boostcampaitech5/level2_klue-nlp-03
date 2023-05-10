@@ -1,7 +1,5 @@
 data/
 results/
-config.yaml
-sweep.yaml
 .cache/
 .dotnet/
 .gitconfig
@@ -21,5 +19,7 @@ __pycache__/
 *.ckpt
 *.pyc
 *.out
+*.yaml
+*.yml
 playground.ipynb
 .ipynb_checkpoints/
