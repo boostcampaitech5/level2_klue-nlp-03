@@ -54,9 +54,9 @@ class KLUEDataLoader(pl.LightningDataModule):
         if stage == "fit":
             total_df = load_data(self.cfg["train_dir"])
             total_df = preprocessing_dataset(total_df)
-            train_df, val_df, _, _ = train_test_split(
+            train_df, val_df = train_test_split(
                 total_df,
-                total_df["label"].values,
+                stratify=total_df["label"].values,
                 test_size=self.cfg["val_size"],
                 random_state=self.cfg["seed"],
             )
