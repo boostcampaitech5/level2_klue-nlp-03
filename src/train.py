@@ -9,6 +9,10 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from utils import get_result_name, num_to_label, remove_pad_tokens
 
+# warning ignore(임시)
+import warnings
+warnings.filterwarnings(action='ignore')
+
 # load config
 with open("./config.yaml") as f:
     cfg = yaml.load(f, Loader=yaml.FullLoader)
