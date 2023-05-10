@@ -21,9 +21,9 @@ parameters:
     values: [32] # [32, 64]
   val_batch_size:
     values: [32]
-  val_test_size:
+  test_batch_size:
     values: [32]
-  val_predict_size:
+  predict_batch_size:
     values: [32]
   max_len: 
     values: [200] # [200,256]

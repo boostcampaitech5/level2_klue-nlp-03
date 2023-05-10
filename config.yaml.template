@@ -5,8 +5,8 @@ num_workers: 8
 model_name: klue/roberta-small
 batch_size: 32
 val_batch_size: 32
-val_test_size: 32
-val_predict_size: 32
+test_batch_size: 32
+predict_batch_size: 32
 epoch: 1
 lr: 1e-5
 loss: CrossEntropyLoss
@@ -14,6 +14,11 @@ optim: AdamW
 max_len: 200
 val_size: 0.1
 patience: 5
+
+lr_scheduler: StepLR(optimizer, step_size=2, gamma=0.85)
+# CosineAnnealingLR(optimizer, T_max=5, eta_min=8e-6)
+# StepLR(optimizer, step_size=2, gamma=0.85)
+
 earlystopping_monitor: val_micro_F1_score
 best_model_monitor: val_micro_F1_score
 
