@@ -7,10 +7,19 @@ from utils import label_to_num, load_data, preprocessing_dataset
 
 
 class KLUEDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, tokenizer):
+    def __init__(self, df: pd.DataFrame, tokenizer, input_format):
         self.df = df
         self.label = label_to_num(df["label"].to_list())
         self.tokenizer = tokenizer
+
+        self.input_format = input_format
+        self.new_tokens = []
+        if self.input_format == 'entity_marker':
+            self.new_tokens = ['[E1]', '[/E1]', '[E2]', '[/E2]']
+        self.tokenizer.add_tokens(self.new_tokens)
+
+        if self.input_format not in ('default', 'entity_mask', 'entity_marker', 'entity_marker_punct', 'typed_entity_marker', 'typed_entity_marker_punct'):
+            raise Exception("Invalid input format!")
 
     def __len__(self):
         return len(self.df)
@@ -30,17 +39,88 @@ class KLUEDataset(Dataset):
 
     def tokenize(self, item: pd.Series) -> dict:
         """sub, obj entity, sentence를 이어붙이고 tokenize합니다."""
-        joined_entity = "[SEP]".join([item["subject_entity"], item["object_entity"]])
-        # entity를 인식시켜주는 부분과 문장 부분을 서로 다른 token type id로 구별하기 위해서 joined_entity와 sentence를 따로 넣어줌
-        tokenized_sentence = self.tokenizer(
-            joined_entity,
-            item["sentence"],
-            add_special_tokens=True,
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt",
-        )
+        # Case 00 : default (no masking or marking)
+        if self.input_format == 'default':
+            joined_entity = "[SEP]".join([item["subject_entity"], item["object_entity"]])
+            # entity를 인식시켜주는 부분과 문장 부분을 서로 다른 token type id로 구별하기 위해서 joined_entity와 sentence를 따로 넣어줌
+            tokenized_sentence = self.tokenizer(
+                joined_entity,
+                item["sentence"],
+                add_special_tokens=True,
+                padding="max_length",
+                truncation=True,
+                return_tensors="pt",
+            )
+            return tokenized_sentence
+        
+        # case need to append new_token in tokenizer
+        # Case 01, 04, 05
+        subj_type = item["subject_entity"]["type"]
+        obj_type = item["object_entity"]["type"]
 
+        # Case 01 : entity_mask
+        if self.input_format == 'entity_mask':
+            subj_type = '[SUBJ-{}]'.format(subj_type)
+            obj_type = '[OBJ-{}]'.format(obj_type)
+            for token in (subj_type, obj_type):
+                if token not in self.new_tokens:
+                    self.new_tokens.append(token)
+                    self.tokenizer.add_tokens([token])
+
+        # Case 04 : typed_entity_marker
+        elif self.input_format == 'typed_entity_marker':
+            subj_start = '[SUBJ-{}]'.format(subj_type)
+            subj_end = '[/SUBJ-{}]'.format(subj_type)
+            obj_start = '[OBJ-{}]'.format(obj_type)
+            obj_end = '[/OBJ-{}]'.format(obj_type)
+            for token in (subj_start, subj_end, obj_start, obj_end):
+                if token not in self.new_tokens:
+                    self.new_tokens.append(token)
+                    self.tokenizer.add_tokens([token])
+
+        # Case 05 : typed_entity_marker_punct
+        elif self.input_format == 'typed_entity_marker_punct':
+            subj_type = self.tokenizer.tokenize(subj_type.replace("_", " ").lower()) 
+            obj_type = self.tokenizer.tokenize(obj_type.replace("_", " ").lower())
+
+
+        # tokienize item with masking or marking
+        # Case 01 ~ 05
+        sent = item['sentence']
+        subj_word = item["subject_entity"]["word"]
+        obj_word = item["object_entity"]["word"]
+
+        # Case 01 : entity_mask
+        if self.input_format == 'entity_mask':
+            sent = sent.replace(subj_word, subj_type)
+            sent = sent.replace(obj_word, obj_type)
+
+        # Case 02 : entity_marker
+        elif self.input_format == 'entity_marker':
+            subj_idx = sent.find(subj_word)
+            sent = sent[:subj_idx] + '[E1]' + subj_word + '[/E1]' + sent[subj_idx+len(subj_word):]
+            obj_idx = sent.find(obj_word)
+            sent = sent[:obj_idx] + '[E2]' + obj_word + '[/E2]' + sent[obj_idx+len(obj_word):]
+
+        # Case 03 : entity_marker_punct
+        elif self.input_format == 'entity_marker_punct':
+            subj_idx = sent.find(subj_word)
+            sent = sent[:subj_idx] + '@' + subj_word + '@' + sent[subj_idx+len(subj_word):]
+            obj_idx = sent.find(obj_word)
+            sent = sent[:obj_idx] + '#' + obj_word + '#' + sent[obj_idx+len(obj_word):]
+
+        # Case 04 : typed_entity_marker
+        elif self.input_format == 'typed_entity_marker':
+            sent = sent.replace(subj_word, subj_start + ' ' + subj_type + ' ' + subj_end)
+            sent = sent.replace(obj_word, obj_start + ' ' + obj_type + ' ' + obj_end)
+
+        # Case 05 : typed_entity_marker_punct
+        elif self.input_format == 'typed_entity_marker_punct':
+            subj_idx = sent.find(subj_word)
+            sent = sent[:subj_idx] + '@ * ' + subj_word + '* @' + sent[subj_idx+len(subj_word):]
+            obj_idx = sent.find(obj_word)
+            sent = sent[:obj_idx] + '# ^ ' + obj_word + ' ^ #' + sent[obj_idx+len(obj_word):]
+        
         return tokenized_sentence
 
 
