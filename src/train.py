@@ -10,8 +10,9 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from utils import get_result_name, num_to_label, remove_pad_tokens
 
 # warning ignore(임시)
-import warnings
-warnings.filterwarnings(action='ignore')
+# import warnings
+
+# warnings.filterwarnings(action="ignore")
 
 # load config
 with open("./config.yaml") as f:
@@ -63,13 +64,13 @@ trainer.fit(model=model, datamodule=dataloader)
 trainer.test(model=model, datamodule=dataloader, ckpt_path="best")
 
 # validation data로 모델의 prediction 결과를 result 폴더에 csv파일로 저장합니다.
-val_result = model.val_result
-val_result["tokenized"] = remove_pad_tokens(
-    val_result["tokenized"], tokenizer.pad_token
+test_result = model.test_result
+test_result["tokenized"] = remove_pad_tokens(
+    test_result["tokenized"], tokenizer.pad_token
 )
-val_result["target"] = num_to_label(val_result["target"])
-val_result["predict"] = num_to_label(val_result["predict"])
-val_result_df = pd.DataFrame(val_result)
-val_result_df.to_csv(
+test_result["target"] = num_to_label(test_result["target"])
+test_result["predict"] = num_to_label(test_result["predict"])
+test_result_df = pd.DataFrame(test_result)
+test_result_df.to_csv(
     cfg["dir"]["result_dir"] + result_name + "/val_result.csv", index=False
 )
