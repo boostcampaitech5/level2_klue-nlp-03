@@ -24,8 +24,11 @@ class BaseModel(pl.LightningModule):
     def configure_optimizers(self):
         MyOptim = eval("torch.optim." + self.cfg["optim"])
         optimizer = MyOptim(self.parameters(), lr=float(self.cfg["lr"]))
-
-        return [optimizer]
+        if self.cfg['lr_scheduler'] is None:
+            return [optimizer]
+        else:
+            scheduler = eval('torch.optim.lr_scheduler.'+self.cgf['lr_scheduler'])
+            return [optimizer], [scheduler]
 
     def compute_metrics(self, output, labels):
         """loss와 score를 계산하는 함수"""
@@ -83,3 +86,30 @@ class BaseModel(pl.LightningModule):
         self.val_result["predict"].extend(
             torch.argmax(output["logits"], dim=1).tolist()
         )
+
+# test
+class BertForDuoClassifier(BaseModel):
+    ''' BinaryClassifier -> MultiClassifier
+    https://www.kaggle.com/code/duongthanhhung/bert-relation-extraction
+    '''
+    def __init__(self, tokenizer, cfg: dict):
+        super().__init__()
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            cfg["model_name"], num_labels=1
+        )
+
+    def compute_metrics(self, output, labels):
+        """loss와 score를 계산하는 함수"""
+        probs = output.logits.detach().cpu()
+        preds = torch.argmax(probs, dim=1)
+        labels = labels.detach().cpu()
+        loss = self.lossF(probs, labels)
+        # calculate accuracy using sklearn's function
+        # f1 = klue_re_micro_f1(preds, labels)
+        # auprc = klue_re_auprc(probs, labels)
+        acc = accuracy_score(labels, preds)  # 리더보드 평가에는 포함되지 않습니다.
+
+        return {
+            "loss": loss,
+            #  "micro_F1_score": f1, "auprc": auprc,
+                 "accuracy": acc}
