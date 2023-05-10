@@ -13,7 +13,7 @@ class BaseModel(pl.LightningModule):
         self.model = AutoModelForSequenceClassification.from_pretrained(
             cfg["model_name"], num_labels=30
         )
-        self.lossF = eval("torch.nn." + cfg["train"]["loss"])()
+        self.lossF = eval("torch.nn." + cfg["loss"])()
 
         self.val_epoch_result = {
             "logits": torch.tensor([], dtype=torch.float32),
