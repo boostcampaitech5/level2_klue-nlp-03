@@ -14,9 +14,11 @@ import shutil, os
 
 # warning ignore(임시)
 import warnings
-warnings.filterwarnings(action='ignore')
 
-def train(cfg, result_name :Optional[str] = None):
+warnings.filterwarnings(action="ignore")
+
+
+def train(cfg, result_name: Optional[str] = None):
     # set random seed
     pl.seed_everything(cfg["seed"])
 
@@ -31,11 +33,7 @@ def train(cfg, result_name :Optional[str] = None):
     dataloader = KLUEDataLoader(tokenizer, cfg)
 
     # wandb logger, ggul_tiger 팀으로 run이 기록됩니다.
-    logger = WandbLogger(
-        name=result_name, 
-        project="KLUE", 
-        entity="ggul_tiger"
-    )
+    logger = WandbLogger(name=result_name, project="KLUE", entity="ggul_tiger")
     logger.experiment.config.update(cfg)
     print("WandbLogger id: {}".format(logger.version))
 
@@ -56,9 +54,7 @@ def train(cfg, result_name :Optional[str] = None):
             ),
             EarlyStopping(
                 monitor=cfg["earlystopping_monitor"],
-                mode="min"
-                if cfg["earlystopping_monitor"] == "val_loss"
-                else "max",
+                mode="min" if cfg["earlystopping_monitor"] == "val_loss" else "max",
                 patience=cfg["patience"],
                 verbose=True,
             ),
@@ -70,31 +66,32 @@ def train(cfg, result_name :Optional[str] = None):
     except KeyboardInterrupt:
         pass
     finally:
-        if trainer.current_epoch>=2:
+        if trainer.current_epoch >= 2:
             trainer.test(model=model, datamodule=dataloader, ckpt_path="best")
             # validation data로 모델의 prediction 결과를 result 폴더에 csv파일로 저장합니다.
-            val_result = model.val_result
-            val_result["tokenized"] = remove_pad_tokens(
-                val_result["tokenized"], tokenizer.pad_token
+            test_result = model.test_result
+            test_result["tokenized"] = remove_pad_tokens(
+                test_result["tokenized"], tokenizer.pad_token
             )
-            val_result["target"] = num_to_label(val_result["target"])
-            val_result["predict"] = num_to_label(val_result["predict"])
-            val_result_df = pd.DataFrame(val_result)
-            val_result_df.to_csv(
+            test_result["target"] = num_to_label(test_result["target"])
+            test_result["predict"] = num_to_label(test_result["predict"])
+            test_result_df = pd.DataFrame(test_result)
+            test_result_df.to_csv(
                 cfg["result_dir"] + result_name + "/val_result.csv", index=False
             )
         else:
             wandb.finish()
-            print('deleteing wandb run : {}'.format(logger.version))
+            print("deleteing wandb run : {}".format(logger.version))
             api = wandb.Api()
             run = api.run("ggul_tiger/KLUE/{}".format(logger.version))
             run.delete(delete_artifacts=True)
 
-            if os.path.exists('results/{}'.format(result_name)):
-                print('deleteing local folder : {}'.format(result_name))
-                shutil.rmtree('results/{}'.format(result_name))
+            if os.path.exists("results/{}".format(result_name)):
+                print("deleteing local folder : {}".format(result_name))
+                shutil.rmtree("results/{}".format(result_name))
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     # load config
     with open("./config.yaml") as f:
         cfg = yaml.load(f, Loader=yaml.FullLoader)
