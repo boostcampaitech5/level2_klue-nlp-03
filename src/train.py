@@ -10,7 +10,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from utils import get_result_name, num_to_label, remove_pad_tokens
 from typing import Optional
 import wandb
-import shutil
+import shutil, os
 
 # warning ignore(임시)
 import warnings
@@ -90,8 +90,9 @@ def train(cfg, result_name :Optional[str] = None):
             run = api.run("ggul_tiger/KLUE/{}".format(logger.version))
             run.delete(delete_artifacts=True)
 
-            print('deleteing local folder : {}'.format(result_name))
-            shutil.rmtree('results/{}'.format(result_name))
+            if os.path.exists('results/{}'.format(result_name)):
+                print('deleteing local folder : {}'.format(result_name))
+                shutil.rmtree('results/{}'.format(result_name))
 
 if __name__=="__main__":
     # load config
