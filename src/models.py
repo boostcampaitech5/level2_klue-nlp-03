@@ -62,10 +62,10 @@ class BaseModel(pl.LightningModule):
 
         metrics = self.compute_metrics(output, batch["labels"])
 
-        self.log("val_loss", metrics["loss"])
-        self.log("val_micro_F1_score", metrics["micro_F1_score"])
-        self.log("val_auprc", metrics["auprc"])
-        self.log("val_accuracy", metrics["accuracy"])
+        self.log("val_loss", metrics["loss"], sync_dist=True)
+        self.log("val_micro_F1_score", metrics["micro_F1_score"], sync_dist=True)
+        self.log("val_auprc", metrics["auprc"], sync_dist=True)
+        self.log("val_accuracy", metrics["accuracy"], sync_dist=True)
 
     def test_step(self, batch, batch_idx):
         output = self.model(

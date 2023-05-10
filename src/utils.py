@@ -124,7 +124,7 @@ def get_result_name() -> str:
     """한국 시간으로 result 이름을 반환합니다."""
     now = datetime.now(tz=timezone(timedelta(hours=9)))
 
-    return now.strftime("%m-%d-%H-%M-%S")
+    return now.strftime("%m-%d-%H:%M:%S")
 
 
 def remove_pad_tokens(sentences: list[str], pad_token: str) -> list[str]:
