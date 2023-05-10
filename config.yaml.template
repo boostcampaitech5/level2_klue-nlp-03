@@ -4,6 +4,9 @@ num_workers: 8
 
 model_name: klue/roberta-small
 batch_size: 32
+val_batch_size: 32
+val_test_size: 32
+val_predict_size: 32
 epoch: 1
 lr: 1e-5
 loss: CrossEntropyLoss

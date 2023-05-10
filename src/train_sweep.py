@@ -10,7 +10,7 @@ def main():
         train(cfg,result_name)
 
 if __name__=="__main__":
-    with open("./sweep.yaml") as f:
+    with open("./config_sweep.yaml") as f:
         cfg = yaml.load(f, Loader=yaml.FullLoader)
 
     sweep_id = wandb.sweep(
