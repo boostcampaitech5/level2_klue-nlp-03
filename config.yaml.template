@@ -15,6 +15,8 @@ max_len: 200
 val_size: 0.1
 patience: 5
 
+input_format: default # select : default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
+
 lr_scheduler: StepLR(optimizer, step_size=2, gamma=0.85)
 # CosineAnnealingLR(optimizer, T_max=5, eta_min=8e-6)
 # StepLR(optimizer, step_size=2, gamma=0.85)
