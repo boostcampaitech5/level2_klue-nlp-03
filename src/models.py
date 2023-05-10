@@ -85,8 +85,8 @@ class BaseModel(pl.LightningModule):
         )
 
 # test
-class BertForDuoClassifier(BaseModel):
-    ''' BinaryClassifier -> MultiClassifier
+class BinaryClassifier(BaseModel):
+    ''' BinaryClassifier
     https://www.kaggle.com/code/duongthanhhung/bert-relation-extraction
     '''
     def __init__(self, tokenizer, cfg: dict):
@@ -108,5 +108,5 @@ class BertForDuoClassifier(BaseModel):
 
         return {
             "loss": loss,
-            #  "micro_F1_score": f1, "auprc": auprc,
+             "micro_F1_score": None, "auprc": None,
                  "accuracy": acc}
