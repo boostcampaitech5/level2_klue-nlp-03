@@ -42,8 +42,10 @@ def preprocessing_dataset(df: pd.DataFrame) -> pd.DataFrame:
     for sub, obj in zip(df["subject_entity"], df["object_entity"]):
         sub = eval(sub)
         obj = eval(obj)
-        subject_entity.append(sub["word"])
-        object_entity.append(obj["word"])
+        # subject_entity.append(sub["word"])
+        # object_entity.append(obj["word"])
+        subject_entity.append(sub)
+        object_entity.append(obj)
     out_dataset = pd.DataFrame(
         {
             "id": df["id"],
