@@ -140,13 +140,13 @@ class KLUEDataLoader(pl.LightningDataModule):
                 test_size=self.cfg["val_size"],
                 random_state=self.cfg["seed"],
             )
-            self.train_dataset = KLUEDataset(train_df, self.tokenizer)
-            self.val_dataset = KLUEDataset(val_df, self.tokenizer)
+            self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['input_format'])
+            self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'])
 
         if stage == "predict":
             predict_df = load_data(self.cfg["test_dir"])
             predict_df = preprocessing_dataset(predict_df)
-            self.predict_dataset = KLUEDataset(predict_df, self.tokenizer)
+            self.predict_dataset = KLUEDataset(predict_df, self.tokenizer, self.cfg['input_format'])
 
     def train_dataloader(self):
         return DataLoader(
