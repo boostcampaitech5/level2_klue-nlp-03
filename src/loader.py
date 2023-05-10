@@ -36,12 +36,16 @@ class KLUEDataset(Dataset):
         }
 
         return ret_dict
+    
+    # 임시
+    def get_tokenizer(self): return self.tokenizer
+    def len_tokenizer(self): return len(self.tokenizer)
 
     def tokenize(self, item: pd.Series) -> dict:
         """sub, obj entity, sentence를 이어붙이고 tokenize합니다."""
         # Case 00 : default (no masking or marking)
         if self.input_format == 'default':
-            joined_entity = "[SEP]".join([item["subject_entity"], item["object_entity"]])
+            joined_entity = "[SEP]".join([item["subject_entity"]["word"], item["object_entity"]["word"]])
             # entity를 인식시켜주는 부분과 문장 부분을 서로 다른 token type id로 구별하기 위해서 joined_entity와 sentence를 따로 넣어줌
             tokenized_sentence = self.tokenizer(
                 joined_entity,
@@ -121,14 +125,26 @@ class KLUEDataset(Dataset):
             obj_idx = sent.find(obj_word)
             sent = sent[:obj_idx] + '# ^ ' + obj_word + ' ^ #' + sent[obj_idx+len(obj_word):]
         
+        tokenized_sentence = self.tokenizer(
+            sent,
+            add_special_tokens=True,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
+        )
+        
         return tokenized_sentence
 
 
 class KLUEDataLoader(pl.LightningDataModule):
-    def __init__(self, tokenzier, cfg: dict):
+    def __init__(self, tokenizer, cfg: dict):
         super().__init__()
-        self.tokenizer = tokenzier
+        self.tokenizer = tokenizer
         self.cfg = cfg
+
+    # 임시
+    def get_tokenizer(self): return self.tokenizer
+    def len_tokenizer(self): return len(self.tokenizer)
 
     def setup(self, stage: str):
         if stage == "fit":
@@ -141,7 +157,9 @@ class KLUEDataLoader(pl.LightningDataModule):
                 random_state=self.cfg["seed"],
             )
             self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['input_format'])
+            # self.tokenizer = self.train_dataset.get_tokenizer()
             self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'])
+            # self.tokenizer = self.val_dataset.get_tokenizer()
 
         if stage == "predict":
             predict_df = load_data(self.cfg["test_dir"])

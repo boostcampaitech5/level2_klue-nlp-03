@@ -29,6 +29,7 @@ def train(cfg, result_name: Optional[str] = None):
     tokenizer = AutoTokenizer.from_pretrained(
         cfg["model_name"], model_max_length=cfg["max_len"]
     )
+    
     model = BaseModel(tokenizer, cfg)
     dataloader = KLUEDataLoader(tokenizer, cfg)
 

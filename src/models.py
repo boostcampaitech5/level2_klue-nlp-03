@@ -25,6 +25,9 @@ class BaseModel(pl.LightningModule):
             "target": [],
             "predict": [],
         }
+    
+    #임시
+    def len_tokenizer(self): return len(self.tokenizer)
 
     def configure_optimizers(self):
         MyOptim = eval("torch.optim." + self.cfg["optim"])
@@ -32,7 +35,7 @@ class BaseModel(pl.LightningModule):
         if self.cfg["lr_scheduler"] is None:
             return [optimizer]
         else:
-            scheduler = eval("torch.optim.lr_scheduler." + self.cgf["lr_scheduler"])
+            scheduler = eval("torch.optim.lr_scheduler." + self.cfg["lr_scheduler"])
             return [optimizer], [scheduler]
 
     def compute_metrics(self, result):
