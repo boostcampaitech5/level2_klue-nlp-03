@@ -1,6 +1,7 @@
 import yaml
 import pytorch_lightning as pl
 import pandas as pd
+import torch
 
 from models import BaseModel
 from loader import KLUEDataLoader
@@ -67,6 +68,7 @@ def train(cfg, result_name: Optional[str] = None):
         pass
     finally:
         if trainer.current_epoch >= 2:
+            # test stage
             trainer.test(model=model, datamodule=dataloader, ckpt_path="best")
             # validation data로 모델의 prediction 결과를 result 폴더에 csv파일로 저장합니다.
             test_result = model.test_result
@@ -79,6 +81,38 @@ def train(cfg, result_name: Optional[str] = None):
             test_result_df.to_csv(
                 cfg["result_dir"] + result_name + "/val_result.csv", index=False
             )
+
+            # inference stage
+            pred_result = trainer.predict(
+                model=model,
+                datamodule=dataloader,
+                ckpt_path="best",
+            )  # list of prediction (batchs, batch_size, num_labels)
+
+            id_list = list(range(7765))
+            probs_list = []
+            label_list = []
+
+            for output in pred_result:
+                logits = output["logits"]
+                preds = torch.argmax(logits, dim=1)
+                probs_list.extend(logits.tolist())
+                label_list.extend(preds.tolist())
+
+            label_list = num_to_label(label_list)
+
+            output = pd.DataFrame(
+                {"id": id_list, "pred_label": label_list, "probs": probs_list}
+            )
+
+            output.to_csv(
+                cfg["result_dir"] + result_name + "/submission.csv", index=False
+            )
+
+            # dump config
+            with open(cfg["result_dir"] + result_name + "/config.yaml", "w") as f:
+                yaml.dump(cfg, f)
+
         else:
             wandb.finish()
             print("deleteing wandb run : {}".format(logger.version))
