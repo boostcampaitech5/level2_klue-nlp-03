@@ -1,19 +1,19 @@
 # 이 파일을 config.yaml로 이름을 변경하고 사용하세요.
 seed: 3
 num_workers: 8
-train:
-  model_name: klue/roberta-small
-  batch_size: 32
-  epoch: 1
-  lr: 1e-5
-  loss: CrossEntropyLoss
-  optim: AdamW
-  max_len: 200
-  val_size: 0.1
-  patience: 5
-  earlystopping_monitor: val_micro_F1_score
-  best_model_monitor: val_micro_F1_score
-dir:
-  train_dir: ./data/train_data.csv
-  test_dir: ./data/test_data.csv
-  result_dir: ./results/
+
+model_name: klue/roberta-small
+batch_size: 32
+epoch: 1
+lr: 1e-5
+loss: CrossEntropyLoss
+optim: AdamW
+max_len: 200
+val_size: 0.1
+patience: 5
+earlystopping_monitor: val_micro_F1_score
+best_model_monitor: val_micro_F1_score
+
+train_dir: ./data/train_data.csv
+test_dir: ./data/test_data.csv
+result_dir: ./results/

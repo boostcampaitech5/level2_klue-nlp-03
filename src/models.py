@@ -11,9 +11,9 @@ class BaseModel(pl.LightningModule):
         self.tokenizer = tokenizer
         self.cfg = cfg
         self.model = AutoModelForSequenceClassification.from_pretrained(
-            cfg["train"]["model_name"], num_labels=30
+            cfg["model_name"], num_labels=30
         )
-        self.lossF = eval("torch.nn." + cfg["train"]["loss"])()
+        self.lossF = eval("torch.nn." + cfg["loss"])()
         self.val_result = {
             "sentence": [],
             "tokenized": [],
@@ -22,8 +22,8 @@ class BaseModel(pl.LightningModule):
         }
 
     def configure_optimizers(self):
-        MyOptim = eval("torch.optim." + self.cfg["train"]["optim"])
-        optimizer = MyOptim(self.parameters(), lr=float(self.cfg["train"]["lr"]))
+        MyOptim = eval("torch.optim." + self.cfg["optim"])
+        optimizer = MyOptim(self.parameters(), lr=float(self.cfg["lr"]))
 
         return [optimizer]
 

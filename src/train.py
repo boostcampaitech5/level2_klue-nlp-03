@@ -8,68 +8,93 @@ from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from utils import get_result_name, num_to_label, remove_pad_tokens
+from typing import Optional
+import wandb
+import shutil
 
 # warning ignore(임시)
 import warnings
 warnings.filterwarnings(action='ignore')
 
-# load config
-with open("./config.yaml") as f:
-    cfg = yaml.load(f, Loader=yaml.FullLoader)
+def train(cfg, result_name :Optional[str] = None):
+    # set random seed
+    pl.seed_everything(cfg["seed"])
 
-# set random seed
-pl.seed_everything(cfg["seed"])
+    # get result name
+    if result_name is None:
+        result_name = get_result_name()
 
-# get result name
-result_name = get_result_name()
+    tokenizer = AutoTokenizer.from_pretrained(
+        cfg["model_name"], model_max_length=cfg["max_len"]
+    )
+    model = BaseModel(tokenizer, cfg)
+    dataloader = KLUEDataLoader(tokenizer, cfg)
 
-tokenizer = AutoTokenizer.from_pretrained(
-    cfg["train"]["model_name"], model_max_length=cfg["train"]["max_len"]
-)
-model = BaseModel(tokenizer, cfg)
-dataloader = KLUEDataLoader(tokenizer, cfg)
+    # wandb logger, ggul_tiger 팀으로 run이 기록됩니다.
+    logger = WandbLogger(
+        name=result_name, 
+        project="KLUE", 
+        entity="ggul_tiger"
+    )
+    logger.experiment.config.update(cfg)
+    print("WandbLogger id: {}".format(logger.version))
 
-# wandb logger, ggul_tiger 팀으로 run이 기록됩니다.
-logger = WandbLogger(name=result_name, project="KLUE", entity="ggul_tiger")
-logger.experiment.config.update(cfg)
+    trainer = pl.Trainer(
+        accelerator="gpu",
+        strategy="ddp",
+        max_epochs=cfg["epoch"],
+        logger=logger,
+        default_root_dir=cfg["result_dir"] + result_name,
+        log_every_n_steps=50,
+        callbacks=[
+            ModelCheckpoint(
+                dirpath=cfg["result_dir"] + result_name,
+                filename="best_model",
+                monitor=cfg["best_model_monitor"],
+                mode="min" if cfg["best_model_monitor"] == "val_loss" else "max",
+                save_top_k=1,
+            ),
+            EarlyStopping(
+                monitor=cfg["earlystopping_monitor"],
+                mode="min"
+                if cfg["earlystopping_monitor"] == "val_loss"
+                else "max",
+                patience=cfg["patience"],
+                verbose=True,
+            ),
+        ],
+    )
 
-trainer = pl.Trainer(
-    accelerator="gpu",
-    strategy="ddp",
-    max_epochs=cfg["train"]["epoch"],
-    logger=logger,
-    default_root_dir=cfg["dir"]["result_dir"] + result_name,
-    log_every_n_steps=50,
-    callbacks=[
-        ModelCheckpoint(
-            dirpath=cfg["dir"]["result_dir"] + result_name,
-            filename="best_model",
-            monitor=cfg["train"]["best_model_monitor"],
-            mode="min" if cfg["train"]["best_model_monitor"] == "val_loss" else "max",
-            save_top_k=1,
-        ),
-        EarlyStopping(
-            monitor=cfg["train"]["earlystopping_monitor"],
-            mode="min"
-            if cfg["train"]["earlystopping_monitor"] == "val_loss"
-            else "max",
-            patience=cfg["train"]["patience"],
-            verbose=True,
-        ),
-    ],
-)
+    try:
+        trainer.fit(model=model, datamodule=dataloader)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if trainer.current_epoch>=2:
+            trainer.test(model=model, datamodule=dataloader, ckpt_path="best")
+            # validation data로 모델의 prediction 결과를 result 폴더에 csv파일로 저장합니다.
+            val_result = model.val_result
+            val_result["tokenized"] = remove_pad_tokens(
+                val_result["tokenized"], tokenizer.pad_token
+            )
+            val_result["target"] = num_to_label(val_result["target"])
+            val_result["predict"] = num_to_label(val_result["predict"])
+            val_result_df = pd.DataFrame(val_result)
+            val_result_df.to_csv(
+                cfg["result_dir"] + result_name + "/val_result.csv", index=False
+            )
+        else:
+            wandb.finish()
+            print('deleteing wandb run : {}'.format(logger.version))
+            api = wandb.Api()
+            run = api.run("ggul_tiger/KLUE/{}".format(logger.version))
+            run.delete(delete_artifacts=True)
 
-trainer.fit(model=model, datamodule=dataloader)
-trainer.test(model=model, datamodule=dataloader, ckpt_path="best")
+            print('deleteing local folder : {}'.format(result_name))
+            shutil.rmtree('results/{}'.format(result_name))
 
-# validation data로 모델의 prediction 결과를 result 폴더에 csv파일로 저장합니다.
-val_result = model.val_result
-val_result["tokenized"] = remove_pad_tokens(
-    val_result["tokenized"], tokenizer.pad_token
-)
-val_result["target"] = num_to_label(val_result["target"])
-val_result["predict"] = num_to_label(val_result["predict"])
-val_result_df = pd.DataFrame(val_result)
-val_result_df.to_csv(
-    cfg["dir"]["result_dir"] + result_name + "/val_result.csv", index=False
-)
+if __name__=="__main__":
+    # load config
+    with open("./config.yaml") as f:
+        cfg = yaml.load(f, Loader=yaml.FullLoader)
+    train(cfg)
