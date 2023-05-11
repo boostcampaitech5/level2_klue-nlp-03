@@ -8,19 +8,18 @@ from models import BaseModel
 from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from utils import get_result_name, num_to_label, remove_pad_tokens
 from typing import Optional
 import wandb
 import shutil, os
+from pprint import pprint
 
 # warning ignore(임시)
 import warnings
+warnings.filterwarnings(action='ignore')
 
-warnings.filterwarnings(action="ignore")
-
-
-def train(cfg, result_name: Optional[str] = None):
+def train(cfg, result_name :Optional[str] = None):
     # set random seed
     pl.seed_everything(cfg["seed"])
 
@@ -35,8 +34,17 @@ def train(cfg, result_name: Optional[str] = None):
     dataloader = KLUEDataLoader(tokenizer, cfg)
 
     # wandb logger, ggul_tiger 팀으로 run이 기록됩니다.
-    logger = WandbLogger(name=result_name, project="KLUE", entity="ggul_tiger")
-    logger.experiment.config.update(cfg)
+    logger = WandbLogger(
+        name=result_name, 
+        project="KLUE", 
+        entity="ggul_tiger"
+    )
+
+    not_wanted_keys= ["num_workers", "train_dir", "test_dir", "result_dir", "val_size", "val_batch_size","test_batch_size","predict_batch_size", "min_epoch_to_log"]
+    dict_filter = lambda item: False if item[0] in not_wanted_keys else True
+    logged_cfg=dict(filter(dict_filter, cfg.items()))
+    pprint(logged_cfg)
+    logger.experiment.config.update(logged_cfg)
     print("WandbLogger id: {}".format(logger.version))
 
     trainer = pl.Trainer(
@@ -56,19 +64,30 @@ def train(cfg, result_name: Optional[str] = None):
             ),
             EarlyStopping(
                 monitor=cfg["earlystopping_monitor"],
-                mode="min" if cfg["earlystopping_monitor"] == "val_loss" else "max",
+                mode="min"
+                if cfg["earlystopping_monitor"] == "val_loss"
+                else "max",
                 patience=cfg["patience"],
                 verbose=True,
             ),
+            LearningRateMonitor(
+                logging_interval="epoch"
+            )
         ],
     )
 
     try:
+        print('started!!!')
         trainer.fit(model=model, datamodule=dataloader)
-    except KeyboardInterrupt:
-        pass
+    except KeyboardInterrupt as k:
+        print("KeyboardInterrupt during fitting:", k)
+    except TypeError as t:
+        print("TypeError during fitting:", t)
+    except Exception as e:
+        print("Exception during fitting:", e)
     finally:
-        if trainer.current_epoch >= 2:
+        print("current epoch:", trainer.current_epoch)
+        if trainer.current_epoch > cfg["min_epoch_to_log"]:
             # test stage
             trainer.test(model=model, datamodule=dataloader, ckpt_path="best")
             # validation data로 모델의 prediction 결과를 result 폴더에 csv파일로 저장합니다.
@@ -80,7 +99,7 @@ def train(cfg, result_name: Optional[str] = None):
             test_result["predict"] = num_to_label(test_result["predict"])
             test_result_df = pd.DataFrame(test_result)
             test_result_df.to_csv(
-                cfg["result_dir"] + result_name + "/val_result.csv", index=False
+                cfg["result_dir"] + result_name + "/test_result.csv", index=False
             )
 
             # inference stage
@@ -116,17 +135,16 @@ def train(cfg, result_name: Optional[str] = None):
 
         else:
             wandb.finish()
-            print("deleteing wandb run : {}".format(logger.version))
+            print('deleteing wandb run : {}'.format(logger.version))
             api = wandb.Api()
             run = api.run("ggul_tiger/KLUE/{}".format(logger.version))
             run.delete(delete_artifacts=True)
 
-            if os.path.exists("results/{}".format(result_name)):
-                print("deleteing local folder : {}".format(result_name))
-                shutil.rmtree("results/{}".format(result_name))
+            if os.path.exists('results/{}'.format(result_name)):
+                print('deleteing local folder : {}'.format(result_name))
+                shutil.rmtree('results/{}'.format(result_name))
 
-
-if __name__ == "__main__":
+if __name__=="__main__":
     # load config
     with open("./config.yaml") as f:
         cfg = yaml.load(f, Loader=yaml.FullLoader)
