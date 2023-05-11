@@ -1,6 +1,6 @@
 import torch
 import pytorch_lightning as pl
-from transformers import AutoModelForSequenceClassification
+from transformers import AutoModelForSequenceClassification, AutoModel
 from utils import klue_re_auprc, klue_re_micro_f1
 from sklearn.metrics import accuracy_score
 
@@ -90,17 +90,46 @@ class BinaryClassifier(BaseModel):
     https://www.kaggle.com/code/duongthanhhung/bert-relation-extraction
     '''
     def __init__(self, tokenizer, cfg: dict):
-        super().__init__()
-        self.model = AutoModelForSequenceClassification.from_pretrained(
-            cfg["model_name"], num_labels=1
-        )
+        super().__init__(tokenizer, cfg)
+        self.model = AutoModel.from_pretrained(cfg["model_name"])
+        self.lossBCE = torch.nn.BCEWithLogitsLoss()
+        self.lossCE = eval("torch.nn." + cfg["loss"])()
+        self.hidden_size = self.model.config.hidden_size
+        self.pooler = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.multi_classifier = torch.nn.Linear(self.hidden_size, 30)
+        self.bi_classifier = torch.nn.Linear(self.hidden_size, 1)
+        self.dropout = torch.nn.Dropout(0.1)
+        self.activation = torch.nn.Tanh()
 
-    def compute_metrics(self, output, labels):
+        self.val_result = {
+            "sentence": [],
+            "tokenized": [],
+            "target": [],
+            "predict": [],
+        }
+
+    def forward(self, **kwargs):
+        outputs = self.model(**kwargs)
+        multiclf_token = outputs['pooler_output'] # (N, hdim)
+        multiclf_token = self.dropout(multiclf_token)
+        multiclf_token = self.multi_classifier(multiclf_token) # (N, 30)
+
+        biclf_token = outputs['last_hidden_state'][:,1]
+        biclf_token = self.pooler(biclf_token)
+        biclf_token = self.activation(biclf_token)
+        biclf_token = self.dropout(biclf_token)
+        biclf_token = self.bi_classifier(biclf_token) # (N, 1)
+
+        return {'multi':multiclf_token, 'bi':biclf_token}
+        
+
+    def compute_metrics(self, probs, labels):
         """loss와 score를 계산하는 함수"""
-        probs = output.logits.detach().cpu()
-        preds = torch.argmax(probs, dim=1)
+        probs = probs.detach().cpu()
+        # preds = torch.argmax(probs, dim=1)
+        preds = torch.where(probs >= 0.5, 1., 0.)
         labels = labels.detach().cpu()
-        loss = self.lossF(probs, labels)
+        loss = self.lossCE(probs, labels)
         # calculate accuracy using sklearn's function
         # f1 = klue_re_micro_f1(preds, labels)
         # auprc = klue_re_auprc(probs, labels)
@@ -108,5 +137,51 @@ class BinaryClassifier(BaseModel):
 
         return {
             "loss": loss,
-             "micro_F1_score": None, "auprc": None,
+            #  "micro_F1_score": None, "auprc": None,
                  "accuracy": acc}
+    def training_step(self, batch, batch_idx):
+        output = self(
+            input_ids=batch["input_ids"].squeeze(),
+            token_type_ids=batch["token_type_ids"].squeeze(),
+            attention_mask=batch["attention_mask"].squeeze(),
+        )
+        binary_labels = (batch['labels']!=0).bool().float().unsqueeze(1)
+        loss = self.lossF(output['bi'], binary_labels)
+
+        self.log("train_loss", loss)
+
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        output = self(
+            input_ids=batch["input_ids"].squeeze(),
+            token_type_ids=batch["token_type_ids"].squeeze(),
+            attention_mask=batch["attention_mask"].squeeze(),
+        )
+
+        binary_labels = (batch['labels']!=0).bool().float().unsqueeze(1)
+        metrics = self.compute_metrics(output['bi'], binary_labels)
+
+        self.log("val_loss", metrics["loss"], sync_dist=True)
+        # self.log("val_micro_F1_score", metrics["micro_F1_score"], sync_dist=True)
+        # self.log("val_auprc", metrics["auprc"], sync_dist=True)
+        self.log("val_accuracy", metrics["accuracy"], sync_dist=True)
+
+    def test_step(self, batch, batch_idx):
+        output = self(
+            input_ids=batch["input_ids"].squeeze(),
+            token_type_ids=batch["token_type_ids"].squeeze(),
+            attention_mask=batch["attention_mask"].squeeze(),
+        )
+
+        binary_labels = (batch['labels']!=0).bool().float()
+
+        # 원래 문장, 원래 target, 모델의 prediction을 저장
+        # self.val_result["sentence"].extend(batch["sentence"])
+        self.val_result["tokenized"].extend(
+            self.tokenizer.batch_decode(batch["input_ids"].squeeze())
+        )
+        self.val_result["target"].extend(binary_labels.squeeze().tolist())
+        self.val_result["predict"].extend(
+           output['bi'].tolist()
+        )

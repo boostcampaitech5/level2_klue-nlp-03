@@ -31,6 +31,9 @@ class KLUEDataset(Dataset):
     def tokenize(self, item: pd.Series) -> dict:
         """sub, obj entity, sentence를 이어붙이고 tokenize합니다."""
         joined_entity = "[SEP]".join([item["subject_entity"], item["object_entity"]])
+        ####
+        joined_entity = '[CLS]' + joined_entity
+        ####
         # entity를 인식시켜주는 부분과 문장 부분을 서로 다른 token type id로 구별하기 위해서 joined_entity와 sentence를 따로 넣어줌
         tokenized_sentence = self.tokenizer(
             joined_entity,
