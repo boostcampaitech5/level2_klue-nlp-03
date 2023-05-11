@@ -7,7 +7,7 @@ from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
-from utils import get_result_name, num_to_label, remove_pad_tokens, marker_tokenizer_update
+from utils import get_result_name, num_to_label, remove_pad_tokens, mask_tokenizer_update
 from typing import Optional
 import wandb
 import shutil, os
@@ -31,7 +31,8 @@ def train(cfg, result_name: Optional[str] = None):
     )
 
     # marker, masking 옵션에 따른 tokenizer update
-    tokenizer = marker_tokenizer_update(tokenizer, cfg)
+    if cfg['input_format'] == 'entity_mask':
+        tokenizer = mask_tokenizer_update(tokenizer, cfg)
 
     model = BaseModel(tokenizer, cfg)
     dataloader = KLUEDataLoader(tokenizer, cfg)

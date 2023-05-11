@@ -13,11 +13,8 @@ class KLUEDataset(Dataset):
         self.tokenizer = tokenizer
 
         self.input_format = input_format
-        # self.new_tokens = []
-        # if self.input_format == 'entity_marker': # -> utils marker_tokenizer_update 대체
-        #     self.new_tokens = ['[E1]', '[/E1]', '[E2]', '[/E2]']
-        # self.tokenizer.add_tokens(self.new_tokens)
-        if self.input_format not in ('default', 'entity_mask', 'entity_marker', 'entity_marker_punct', 'typed_entity_marker', 'typed_entity_marker_punct'):
+
+        if self.input_format not in ('default', 'entity_mask', 'entity_marker_punct', 'typed_entity_marker_punct'):
             raise Exception("Invalid input format!")
 
     def __len__(self):
@@ -42,7 +39,7 @@ class KLUEDataset(Dataset):
     def len_label(self): return len(self.label), len(list(set(self.label)))
 
     def tokenize(self, item: pd.Series) -> dict:
-        """sub, obj entity, sentence를 이어붙이고 tokenize합니다."""
+        """input format에 맞게 sub, obj entity, sentence를 이어붙이고 tokenize합니다."""
         # Case 00 : default (no masking or marking)
         if self.input_format == 'default':
             joined_entity = "[SEP]".join([item["subject_entity"]["word"], item["object_entity"]["word"]])
@@ -57,27 +54,11 @@ class KLUEDataset(Dataset):
             )
             return tokenized_sentence
         
-        # case need to append new_token in tokenizer
-        # Case 01, 04
+        # Case 01 ~ 03
         subj_type = item["subject_entity"]["type"]
         obj_type = item["object_entity"]["type"]
 
-        # Case 04 : typed_entity_marker -> utils marker_tokenizer_update 대체
-        if self.input_format == 'typed_entity_marker':
-            subj_start = '[SUBJ-{}]'.format(subj_type)
-            subj_end = '[/SUBJ-{}]'.format(subj_type)
-            obj_start = '[OBJ-{}]'.format(obj_type)
-            obj_end = '[/OBJ-{}]'.format(obj_type)
-
-        # case need to change format of subj/obj type
-        # Case 05 : typed_entity_marker_punct
-        elif self.input_format == 'typed_entity_marker_punct':
-            subj_type = self.tokenizer.tokenize(subj_type.replace("_", " ").lower()) 
-            obj_type = self.tokenizer.tokenize(obj_type.replace("_", " ").lower())
-
-
         # tokienize item with masking or marking
-        # Case 01 ~ 05
         sent = item['sentence']
         subj_word = item["subject_entity"]["word"]
         obj_word = item["object_entity"]["word"]
@@ -87,27 +68,19 @@ class KLUEDataset(Dataset):
             sent = sent.replace(subj_word, subj_type)
             sent = sent.replace(obj_word, obj_type)
 
-        # Case 02 : entity_marker
-        elif self.input_format == 'entity_marker':
-            subj_idx = sent.find(subj_word)
-            sent = sent[:subj_idx] + '[E1]' + subj_word + '[/E1]' + sent[subj_idx+len(subj_word):]
-            obj_idx = sent.find(obj_word)
-            sent = sent[:obj_idx] + '[E2]' + obj_word + '[/E2]' + sent[obj_idx+len(obj_word):]
-
-        # Case 03 : entity_marker_punct
+        # Case 02 : entity_marker_punct
         elif self.input_format == 'entity_marker_punct':
             subj_idx = sent.find(subj_word)
             sent = sent[:subj_idx] + '@' + subj_word + '@' + sent[subj_idx+len(subj_word):]
             obj_idx = sent.find(obj_word)
             sent = sent[:obj_idx] + '#' + obj_word + '#' + sent[obj_idx+len(obj_word):]
 
-        # Case 04 : typed_entity_marker
-        elif self.input_format == 'typed_entity_marker':
-            sent = sent.replace(subj_word, subj_start + ' ' + subj_type + ' ' + subj_end)
-            sent = sent.replace(obj_word, obj_start + ' ' + obj_type + ' ' + obj_end)
-
-        # Case 05 : typed_entity_marker_punct
+        # Case 03 : typed_entity_marker_punct
         elif self.input_format == 'typed_entity_marker_punct':
+            # change format of subj/obj type 
+            subj_type = self.tokenizer.tokenize(subj_type.replace("_", " ").lower()) 
+            obj_type = self.tokenizer.tokenize(obj_type.replace("_", " ").lower())
+            # add marker token
             subj_idx = sent.find(subj_word)
             sent = sent[:subj_idx] + '@ * ' + subj_word + '* @' + sent[subj_idx+len(subj_word):]
             obj_idx = sent.find(obj_word)

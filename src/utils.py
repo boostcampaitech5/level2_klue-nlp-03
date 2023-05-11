@@ -132,40 +132,17 @@ def remove_pad_tokens(sentences: List[str], pad_token: str) -> List[str]:
     ret = [sentence.replace(" " + pad_token, "") for sentence in sentences]
     return ret
 
-def marker_tokenizer_update(tokenizer, cfg: dict):
-    # Case 01
-    if cfg['input_format'] == 'entity_mask':
-        df = pd.read_csv(cfg['train_dir'])
-        new_tokens = []
-        for sub, obj in zip(df["subject_entity"], df["object_entity"]):
-            sub = eval(sub)
-            obj = eval(obj)
-            subj_type = '[SUBJ-{}]'.format(sub['type'])
-            obj_type = '[OBJ-{}]'.format(obj['type'])
-            for token in (subj_type, obj_type):
-                if token not in new_tokens:
-                    new_tokens.append(token)
-                    tokenizer.add_tokens([token])
-
-    # Case 02
-    elif cfg['input_format'] == 'entity_marker':
-        new_tokens = ['[E1]', '[/E1]', '[E2]', '[/E2]']
-        tokenizer.add_tokens(new_tokens)
-    
-    # Case 04
-    elif cfg['input_format'] == 'typed_entity_marker':
-        df = pd.read_csv(cfg['train_dir'])
-        new_tokens = []
-        for sub, obj in zip(df["subject_entity"], df["object_entity"]):
-            sub = eval(sub)
-            obj = eval(obj)
-            subj_start = '[SUBJ-{}]'.format(sub['type'])
-            subj_end = '[/SUBJ-{}]'.format(sub['type'])
-            obj_start = '[OBJ-{}]'.format(obj['type'])
-            obj_end = '[/OBJ-{}]'.format(obj['type'])
-            for token in (subj_start, subj_end, obj_start, obj_end):
-                if token not in new_tokens:
-                    new_tokens.append(token)
-                    tokenizer.add_tokens([token])
+def mask_tokenizer_update(tokenizer, cfg):
+    df = pd.read_csv(cfg['train_dir'])
+    new_tokens = []
+    for sub, obj in zip(df["subject_entity"], df["object_entity"]):
+        sub = eval(sub)
+        obj = eval(obj)
+        subj_type = '[SUBJ-{}]'.format(sub['type'])
+        obj_type = '[OBJ-{}]'.format(obj['type'])
+        for token in (subj_type, obj_type):
+            if token not in new_tokens:
+                new_tokens.append(token)
+                tokenizer.add_tokens([token])
 
     return tokenizer
