@@ -22,10 +22,6 @@ patience: 5
 model_class: BaseModel # BaseModel, ModelWithBinaryClassification
 input_format: default # select : default, entity_mask, entity_marker_punct, typed_entity_marker_punct
 
-lr_scheduler: StepLR(optimizer, step_size=2, gamma=0.85)
-# CosineAnnealingLR(optimizer, T_max=5, eta_min=8e-6)
-# StepLR(optimizer, step_size=2, gamma=0.85)
-
 earlystopping_monitor: val_micro_F1_score
 best_model_monitor: val_micro_F1_score
 
