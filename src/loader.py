@@ -7,11 +7,15 @@ from utils import label_to_num, load_data, preprocessing_dataset
 
 
 class KLUEDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, tokenizer, model_class):
+    def __init__(self, df: pd.DataFrame, tokenizer, input_format,model_class):
         self.df = df
         self.label = label_to_num(df["label"].to_list())
         self.tokenizer = tokenizer
         self.model_class = model_class
+        self.input_format = input_format
+
+        if self.input_format not in ('default', 'entity_mask', 'entity_marker_punct', 'typed_entity_marker_punct'):
+            raise Exception("Invalid input format!")
 
     def __len__(self):
         return len(self.df)
@@ -26,32 +30,83 @@ class KLUEDataset(Dataset):
             "attention_mask": tokenized_sentence["attention_mask"],
             "labels": torch.tensor(self.label[idx]),
         }
-
         return ret_dict
+    
+    # 임시
+    # def get_tokenizer(self): return self.tokenizer
+    # def len_tokenizer(self): return len(self.tokenizer)
+    # def len_label(self): return len(self.label), len(list(set(self.label)))
 
     def tokenize(self, item: pd.Series) -> dict:
-        """sub, obj entity, sentence를 이어붙이고 tokenize합니다."""
-        joined_entity = "[SEP]".join([item["subject_entity"], item["object_entity"]])
-        if self.model_class != 'BaseModel':
-            joined_entity = '[CLS]' + joined_entity
-        # entity를 인식시켜주는 부분과 문장 부분을 서로 다른 token type id로 구별하기 위해서 joined_entity와 sentence를 따로 넣어줌
+        """input format에 맞게 sub, obj entity, sentence를 이어붙이고 tokenize합니다."""
+        # Case 00 : default (no masking or marking)
+        if self.input_format == 'default':
+            joined_entity = "[SEP]".join([item["subject_entity"]["word"], item["object_entity"]["word"]])
+            if self.model_class == 'ModelWithBinaryClassification':
+                 joined_entity = "[CLS]" + joined_entity
+            # entity를 인식시켜주는 부분과 문장 부분을 서로 다른 token type id로 구별하기 위해서 joined_entity와 sentence를 따로 넣어줌
+            tokenized_sentence = self.tokenizer(
+                joined_entity,
+                item["sentence"],
+                add_special_tokens=True,
+                padding="max_length",
+                truncation=True,
+                return_tensors="pt",
+            )
+            return tokenized_sentence
+        
+        # Case 01 ~ 03
+        subj_type = item["subject_entity"]["type"]
+        obj_type = item["object_entity"]["type"]
+
+        # tokienize item with masking or marking
+        sent = item['sentence']
+        subj_word = item["subject_entity"]["word"]
+        obj_word = item["object_entity"]["word"]
+
+        # Case 01 : entity_mask
+        if self.input_format == 'entity_mask':
+            sent = sent.replace(subj_word, subj_type)
+            sent = sent.replace(obj_word, obj_type)
+
+        # Case 02 : entity_marker_punct
+        elif self.input_format == 'entity_marker_punct':
+            subj_idx = sent.find(subj_word)
+            sent = sent[:subj_idx] + '@' + subj_word + '@' + sent[subj_idx+len(subj_word):]
+            obj_idx = sent.find(obj_word)
+            sent = sent[:obj_idx] + '#' + obj_word + '#' + sent[obj_idx+len(obj_word):]
+
+        # Case 03 : typed_entity_marker_punct
+        elif self.input_format == 'typed_entity_marker_punct':
+            # change format of subj/obj type 
+            subj_type = self.tokenizer.tokenize(subj_type.replace("_", " ").lower()) 
+            obj_type = self.tokenizer.tokenize(obj_type.replace("_", " ").lower())
+            # add marker token
+            subj_idx = sent.find(subj_word)
+            sent = sent[:subj_idx] + '@ * ' + subj_word + '* @' + sent[subj_idx+len(subj_word):]
+            obj_idx = sent.find(obj_word)
+            sent = sent[:obj_idx] + '# ^ ' + obj_word + ' ^ #' + sent[obj_idx+len(obj_word):]
+        
         tokenized_sentence = self.tokenizer(
-            joined_entity,
-            item["sentence"],
+            sent,
             add_special_tokens=True,
             padding="max_length",
             truncation=True,
             return_tensors="pt",
         )
-
+        
         return tokenized_sentence
 
 
 class KLUEDataLoader(pl.LightningDataModule):
-    def __init__(self, tokenzier, cfg: dict):
+    def __init__(self, tokenizer, cfg: dict):
         super().__init__()
-        self.tokenizer = tokenzier
+        self.tokenizer = tokenizer
         self.cfg = cfg
+        
+    # 임시
+    def get_tokenizer(self): return self.tokenizer
+    def len_tokenizer(self): return len(self.tokenizer)
 
     def setup(self, stage: str):
         if stage == "fit":
@@ -63,13 +118,13 @@ class KLUEDataLoader(pl.LightningDataModule):
                 test_size=self.cfg["val_size"],
                 random_state=self.cfg["seed"],
             )
-            self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['model_class'])
-            self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['model_class'])
+            self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
+            self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
 
         if stage == "predict":
             predict_df = load_data(self.cfg["test_dir"])
             predict_df = preprocessing_dataset(predict_df)
-            self.predict_dataset = KLUEDataset(predict_df, self.tokenizer, self.cfg['model_class'])
+            self.predict_dataset = KLUEDataset(predict_df, self.tokenizer, self.cfg['input_format'], self.cfg['model_class'])
 
     def train_dataloader(self):
         return DataLoader(
