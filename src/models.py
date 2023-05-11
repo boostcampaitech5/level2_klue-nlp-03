@@ -45,10 +45,11 @@ class BaseModel(pl.LightningModule):
 
     def compute_metrics(self, result):
         """loss와 score를 계산하는 함수"""
-        probs = F.softmax(result["logits"], dim=1)
+        logits = result["logits"]
+        probs = F.softmax(logits, dim=1)
         preds = torch.argmax(probs, dim=1)
         labels = result["labels"]
-        loss = self.lossF(probs, labels)
+        loss = self.lossF(logits, labels)
         # calculate accuracy using sklearn's function
         f1 = klue_re_micro_f1(preds, labels)
         auprc = klue_re_auprc(probs, labels)
