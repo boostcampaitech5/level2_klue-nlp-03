@@ -12,7 +12,8 @@ class BaseModel(pl.LightningModule):
         self.tokenizer = tokenizer
         self.cfg = cfg
         self.model = AutoModelForSequenceClassification.from_pretrained(
-            cfg["model_name"], num_labels=30
+            cfg["model_name"] if cfg['model_path'] is None else cfg['model_path'], 
+            num_labels=30
         )
         self.lossF = eval("torch.nn." + cfg["loss"])()
 

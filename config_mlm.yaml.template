@@ -1,0 +1,22 @@
+# 저장할 공간
+entity: ggul_tiger
+project: MLM
+
+seed: 3
+num_workers: 4
+
+model: klue/bert-base
+test_size: 0.2
+mlm_probability: 0.15
+data_path: data/train_data.csv
+
+# https://github.com/google-research/bert/blob/master/run_pretraining.py#L240
+epoch: 5
+lr: 0.00005
+train_batch_size: 32
+eval_batch_size: 256
+block_size: 200
+weight_decay: 0.0
+
+save_steps: 100
+save_dir: results_mlm
