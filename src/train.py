@@ -93,9 +93,8 @@ def train(cfg, result_name :Optional[str] = None):
             test_result["tokenized"] = remove_pad_tokens(
                 test_result["tokenized"], tokenizer.pad_token
             )
-            if cfg['model_class'] == 'BaseModel':
-                test_result["target"] = num_to_label(test_result["target"])
-                test_result["predict"] = num_to_label(test_result["predict"])
+            test_result["target"] = num_to_label(test_result["target"])
+            test_result["predict"] = num_to_label(test_result["predict"])
             test_result_df = pd.DataFrame(test_result)
             test_result_df.to_csv(
                 cfg["result_dir"] + result_name + "/test_result.csv", index=False
