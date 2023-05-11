@@ -87,6 +87,10 @@ class KLUEDataset(Dataset):
             obj_idx = sent.find(obj_word)
             sent = sent[:obj_idx] + '# ^ ' + obj_word + ' ^ #' + sent[obj_idx+len(obj_word):]
         
+        # ModelWithBinaryClassification
+        if self.model_class == 'ModelWithBinaryClassification':
+            sent = '[CLS]' + sent
+
         tokenized_sentence = self.tokenizer(
             sent,
             add_special_tokens=True,
