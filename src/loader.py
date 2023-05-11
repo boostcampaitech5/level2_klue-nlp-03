@@ -7,10 +7,11 @@ from utils import label_to_num, load_data, preprocessing_dataset
 
 
 class KLUEDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, tokenizer):
+    def __init__(self, df: pd.DataFrame, tokenizer, model_class):
         self.df = df
         self.label = label_to_num(df["label"].to_list())
         self.tokenizer = tokenizer
+        self.model_class = model_class
 
     def __len__(self):
         return len(self.df)
@@ -31,9 +32,8 @@ class KLUEDataset(Dataset):
     def tokenize(self, item: pd.Series) -> dict:
         """sub, obj entity, sentence를 이어붙이고 tokenize합니다."""
         joined_entity = "[SEP]".join([item["subject_entity"], item["object_entity"]])
-        ####
-        joined_entity = '[CLS]' + joined_entity
-        ####
+        if self.model_class != 'BaseModel':
+            joined_entity = '[CLS]' + joined_entity
         # entity를 인식시켜주는 부분과 문장 부분을 서로 다른 token type id로 구별하기 위해서 joined_entity와 sentence를 따로 넣어줌
         tokenized_sentence = self.tokenizer(
             joined_entity,
@@ -63,13 +63,13 @@ class KLUEDataLoader(pl.LightningDataModule):
                 test_size=self.cfg["val_size"],
                 random_state=self.cfg["seed"],
             )
-            self.train_dataset = KLUEDataset(train_df, self.tokenizer)
-            self.val_dataset = KLUEDataset(val_df, self.tokenizer)
+            self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['model_class'])
+            self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['model_class'])
 
         if stage == "predict":
             predict_df = load_data(self.cfg["test_dir"])
             predict_df = preprocessing_dataset(predict_df)
-            self.predict_dataset = KLUEDataset(predict_df, self.tokenizer)
+            self.predict_dataset = KLUEDataset(predict_df, self.tokenizer, self.cfg['model_class'])
 
     def train_dataloader(self):
         return DataLoader(

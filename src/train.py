@@ -28,13 +28,13 @@ def train(cfg, result_name :Optional[str] = None):
     tokenizer = AutoTokenizer.from_pretrained(
         cfg["model_name"], model_max_length=cfg["max_len"]
     )
-    model = BinaryClassifier(tokenizer, cfg)
+    model = eval(cfg['model_class'])(tokenizer, cfg)
     dataloader = KLUEDataLoader(tokenizer, cfg)
 
     # wandb logger, ggul_tiger 팀으로 run이 기록됩니다.
     logger = WandbLogger(
         name=result_name, 
-        project="KLUE2", 
+        project=cfg['project_name'], 
         entity="ggul_tiger"
     )
     logger.experiment.config.update(cfg)
@@ -78,8 +78,9 @@ def train(cfg, result_name :Optional[str] = None):
             val_result["tokenized"] = remove_pad_tokens(
                 val_result["tokenized"], tokenizer.pad_token
             )
-            # val_result["target"] = num_to_label(val_result["target"])
-            # val_result["predict"] = num_to_label(val_result["predict"])
+            if cfg['model_class'] == 'BaseModel':
+                val_result["target"] = num_to_label(val_result["target"])
+                val_result["predict"] = num_to_label(val_result["predict"])
             val_result_df = pd.DataFrame(val_result)
             val_result_df.to_csv(
                 cfg["result_dir"] + result_name + "/val_result.csv", index=False

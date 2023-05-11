@@ -1,7 +1,9 @@
 # 이 파일을 config.yaml로 이름을 변경하고 사용하세요.
 seed: 3
 num_workers: 8
+project_name: KLUE
 
+model_class: BaseModel # BaseModel, BinaryClassifier
 model_name: klue/roberta-small
 batch_size: 32
 val_batch_size: 32

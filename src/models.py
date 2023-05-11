@@ -87,7 +87,7 @@ class BaseModel(pl.LightningModule):
 # test
 class BinaryClassifier(BaseModel):
     ''' BinaryClassifier
-    https://www.kaggle.com/code/duongthanhhung/bert-relation-extraction
+    which picks up 'no-relation' or not
     '''
     def __init__(self, tokenizer, cfg: dict):
         super().__init__(tokenizer, cfg)
@@ -102,7 +102,7 @@ class BinaryClassifier(BaseModel):
         self.activation = torch.nn.Tanh()
 
         self.val_result = {
-            "sentence": [],
+            # "sentence": [],
             "tokenized": [],
             "target": [],
             "predict": [],
