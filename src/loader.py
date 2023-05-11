@@ -13,11 +13,10 @@ class KLUEDataset(Dataset):
         self.tokenizer = tokenizer
 
         self.input_format = input_format
-        self.new_tokens = []
-        if self.input_format == 'entity_marker':
-            self.new_tokens = ['[E1]', '[/E1]', '[E2]', '[/E2]']
-        self.tokenizer.add_tokens(self.new_tokens)
-
+        # self.new_tokens = []
+        # if self.input_format == 'entity_marker': # -> utils marker_tokenizer_update 대체
+        #     self.new_tokens = ['[E1]', '[/E1]', '[E2]', '[/E2]']
+        # self.tokenizer.add_tokens(self.new_tokens)
         if self.input_format not in ('default', 'entity_mask', 'entity_marker', 'entity_marker_punct', 'typed_entity_marker', 'typed_entity_marker_punct'):
             raise Exception("Invalid input format!")
 
@@ -40,6 +39,7 @@ class KLUEDataset(Dataset):
     # 임시
     def get_tokenizer(self): return self.tokenizer
     def len_tokenizer(self): return len(self.tokenizer)
+    def len_label(self): return len(self.label), len(list(set(self.label)))
 
     def tokenize(self, item: pd.Series) -> dict:
         """sub, obj entity, sentence를 이어붙이고 tokenize합니다."""
@@ -58,30 +58,18 @@ class KLUEDataset(Dataset):
             return tokenized_sentence
         
         # case need to append new_token in tokenizer
-        # Case 01, 04, 05
+        # Case 01, 04
         subj_type = item["subject_entity"]["type"]
         obj_type = item["object_entity"]["type"]
 
-        # Case 01 : entity_mask
-        if self.input_format == 'entity_mask':
-            subj_type = '[SUBJ-{}]'.format(subj_type)
-            obj_type = '[OBJ-{}]'.format(obj_type)
-            for token in (subj_type, obj_type):
-                if token not in self.new_tokens:
-                    self.new_tokens.append(token)
-                    self.tokenizer.add_tokens([token])
-
-        # Case 04 : typed_entity_marker
-        elif self.input_format == 'typed_entity_marker':
+        # Case 04 : typed_entity_marker -> utils marker_tokenizer_update 대체
+        if self.input_format == 'typed_entity_marker':
             subj_start = '[SUBJ-{}]'.format(subj_type)
             subj_end = '[/SUBJ-{}]'.format(subj_type)
             obj_start = '[OBJ-{}]'.format(obj_type)
             obj_end = '[/OBJ-{}]'.format(obj_type)
-            for token in (subj_start, subj_end, obj_start, obj_end):
-                if token not in self.new_tokens:
-                    self.new_tokens.append(token)
-                    self.tokenizer.add_tokens([token])
 
+        # case need to change format of subj/obj type
         # Case 05 : typed_entity_marker_punct
         elif self.input_format == 'typed_entity_marker_punct':
             subj_type = self.tokenizer.tokenize(subj_type.replace("_", " ").lower()) 
@@ -141,7 +129,7 @@ class KLUEDataLoader(pl.LightningDataModule):
         super().__init__()
         self.tokenizer = tokenizer
         self.cfg = cfg
-
+        
     # 임시
     def get_tokenizer(self): return self.tokenizer
     def len_tokenizer(self): return len(self.tokenizer)
