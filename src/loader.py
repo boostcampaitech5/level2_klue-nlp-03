@@ -79,8 +79,8 @@ class KLUEDataset(Dataset):
         # Case 03 : typed_entity_marker_punct
         elif self.input_format == 'typed_entity_marker_punct':
             # change format of subj/obj type 
-            subj_type = self.tokenizer.tokenize(subj_type.replace("_", " ").lower()) 
-            obj_type = self.tokenizer.tokenize(obj_type.replace("_", " ").lower())
+            subj_type = subj_type.replace("_", " ").lower()
+            obj_type = obj_type.replace("_", " ").lower()
             # add marker token
             subj_idx = sent.find(subj_word)
             sent = sent[:subj_idx] + '@ * ' + subj_type + ' * ' + subj_word + ' @' + sent[subj_idx+len(subj_word):]
