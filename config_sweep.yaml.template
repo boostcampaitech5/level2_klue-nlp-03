@@ -16,7 +16,9 @@ parameters:
   model_name: 
     values: [klue/bert-base] # klue/bert-base, klue/bert-large, klue/roberta-base, klue/roberta-large
   lr: 
-    values: [1e-5] # [1e-5, 2e-5, 3e-5, 4e-5, 5e-5]
+    values: [1e-5, 2e-5, 3e-5, 4e-5, 5e-5] # [1e-5, 2e-5, 3e-5, 4e-5, 5e-5]
+  lr_scheduler: 
+    value: null
   batch_size: 
     values: [32] # [32, 64]
   val_batch_size:
@@ -42,6 +44,9 @@ parameters:
     value: val_micro_F1_score
   best_model_monitor: 
     value: val_micro_F1_score
+  min_epoch_to_log:
+    value: 2
+
   train_dir: 
     value: ./data/train_data.csv
   test_dir: 
