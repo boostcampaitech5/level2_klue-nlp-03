@@ -2,7 +2,7 @@ import yaml
 import pytorch_lightning as pl
 import pandas as pd
 
-from models import BaseModel, BinaryClassifier
+from models import BaseModel, ModelWithBinaryClassification
 from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger

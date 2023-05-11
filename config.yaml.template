@@ -3,7 +3,7 @@ seed: 3
 num_workers: 4
 project_name: KLUE
 
-model_class: BaseModel # BaseModel, BinaryClassifier
+model_class: BaseModel # BaseModel, ModelWithBinaryClassification
 model_name: klue/roberta-small
 lr: 1e-5
 lr_scheduler: StepLR(optimizer, step_size=2, gamma=0.85)

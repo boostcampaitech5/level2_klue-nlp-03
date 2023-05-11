@@ -103,8 +103,8 @@ class BaseModel(pl.LightningModule):
         )
 
 # test
-class BinaryClassifier(BaseModel):
-    ''' BinaryClassifier
+class ModelWithBinaryClassification(BaseModel):
+    ''' ModelWithBinaryClassification
     which picks up 'no-relation' or not
     '''
     def __init__(self, tokenizer, cfg: dict):
