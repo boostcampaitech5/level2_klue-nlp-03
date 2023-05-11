@@ -26,6 +26,9 @@ class BaseModel(pl.LightningModule):
             "target": [],
             "predict": [],
         }
+    
+    #임시
+    def len_tokenizer(self): return len(self.tokenizer)
 
     def forward(self, input):
         return self.model(
