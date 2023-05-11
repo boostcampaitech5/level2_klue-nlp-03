@@ -108,7 +108,7 @@ def train(cfg, result_name :Optional[str] = None):
             )
 
             # inference stage
-            pred_result = trainer.predict(
+            predictions = trainer.predict(
                 model=model,
                 datamodule=dataloader,
                 ckpt_path="best",
@@ -118,11 +118,9 @@ def train(cfg, result_name :Optional[str] = None):
             probs_list = []
             label_list = []
 
-            for output in pred_result:
-                probs = F.softmax(output["logits"], dim=1)
-                preds = torch.argmax(probs, dim=1)
-                probs_list.extend(probs.tolist())
-                label_list.extend(preds.tolist())
+            for output in predictions:
+                probs_list.extend(output['probs'].tolist())
+                label_list.extend(output['preds'].tolist())
 
             label_list = num_to_label(label_list)
 

@@ -100,6 +100,13 @@ class BaseModel(pl.LightningModule):
         self.test_result["predict"].extend(
             torch.argmax(output["logits"], dim=1).tolist()
         )
+    
+    def predict_step(self, batch, batch_idx):
+        output = self.forward(batch)
+        probs = F.softmax(output['logits'],dim=1)
+        preds = torch.argmax(probs, dim=1)
+        return {'preds':preds, 'probs':probs}
+
 
 # test
 class ModelWithBinaryClassification(BaseModel):
@@ -120,8 +127,12 @@ class ModelWithBinaryClassification(BaseModel):
         self.alpha = 0.6
 
 
-    def forward(self, **kwargs):
-        outputs = self.model(**kwargs)
+    def forward(self, input):
+        outputs = self.model(
+            input_ids=input["input_ids"].squeeze(),
+            token_type_ids=input["token_type_ids"].squeeze(),
+            attention_mask=input["attention_mask"].squeeze(),
+        )
         multiclf_token = self.dropout(outputs['pooler_output']) # (N, hdim)
 
         biclf_token = outputs['last_hidden_state'][:,1]
@@ -133,7 +144,7 @@ class ModelWithBinaryClassification(BaseModel):
         multiclf = torch.cat([multiclf_token,biclf_token],dim=1) # (N,hdim*2)
         multiclf = self.multi_classifier(multiclf) # (N, 30)
 
-        return {'multi':multiclf, 'bi':biclf}
+        return {'logits':multiclf, 'bi':biclf}
         
 
     def compute_metrics(self, result):
@@ -152,16 +163,12 @@ class ModelWithBinaryClassification(BaseModel):
              "micro_F1_score": f1, "auprc": auprc,
                  "accuracy": acc}
     def training_step(self, batch, batch_idx):
-        output = self(
-            input_ids=batch["input_ids"].squeeze(),
-            token_type_ids=batch["token_type_ids"].squeeze(),
-            attention_mask=batch["attention_mask"].squeeze(),
-        )
+        output = self(batch)
 
         binary_labels = (batch['labels']!=0).bool().float().unsqueeze(1)
 
         loss_bi = self.lossBCE(output['bi'], binary_labels) * self.alpha
-        loss_mul = self.lossCE(output['multi'], batch['labels']) * (1-self.alpha)
+        loss_mul = self.lossCE(output['logits'], batch['labels']) * (1-self.alpha)
         loss = loss_bi + loss_mul
 
         self.log("train_loss", loss)
@@ -169,18 +176,14 @@ class ModelWithBinaryClassification(BaseModel):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        output = self(
-            input_ids=batch["input_ids"].squeeze(),
-            token_type_ids=batch["token_type_ids"].squeeze(),
-            attention_mask=batch["attention_mask"].squeeze(),
-        )
+        output = self(batch)
         binary_labels = (batch['labels']!=0).bool().float().unsqueeze(1)
 
         loss_bi = self.lossBCE(output['bi'], binary_labels) * self.alpha
-        loss_mul = self.lossCE(output['multi'], batch['labels']) * (1-self.alpha)
+        loss_mul = self.lossCE(output['logits'], batch['labels']) * (1-self.alpha)
         loss = loss_bi + loss_mul
 
-        logits = output['multi'].detach().cpu()
+        logits = output['logits'].detach().cpu()
         labels = batch['labels'].detach().cpu()
 
         self.log("val_loss", loss, sync_dist=True, on_epoch=True)
@@ -201,11 +204,7 @@ class ModelWithBinaryClassification(BaseModel):
         self.val_epoch_result["labels"] = torch.tensor([], dtype=torch.int64)
 
     def test_step(self, batch, batch_idx):
-        output = self(
-            input_ids=batch["input_ids"].squeeze(),
-            token_type_ids=batch["token_type_ids"].squeeze(),
-            attention_mask=batch["attention_mask"].squeeze(),
-        )
+        output = self(batch)
 
         # 원래 문장, 원래 target, 모델의 prediction을 저장
         self.test_result["sentence"].extend(batch["sentence"])
@@ -214,5 +213,5 @@ class ModelWithBinaryClassification(BaseModel):
         )
         self.test_result["target"].extend(batch["labels"].tolist())
         self.test_result["predict"].extend(
-            torch.argmax(output['multi'], dim=1).tolist()
+            torch.argmax(output['logits'], dim=1).tolist()
         )
