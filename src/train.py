@@ -6,12 +6,13 @@ from models import BaseModel, BinaryClassifier
 from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from utils import get_result_name, num_to_label, remove_pad_tokens
 from typing import Optional
 import os
 import wandb
-import shutil
+import shutil, os
+from pprint import pprint
 
 # warning ignore(임시)
 import warnings
@@ -37,7 +38,12 @@ def train(cfg, result_name :Optional[str] = None):
         project=cfg['project_name'], 
         entity="ggul_tiger"
     )
-    logger.experiment.config.update(cfg)
+
+    not_wanted_keys= ["num_workers", "train_dir", "test_dir", "result_dir", "val_size", "val_batch_size","test_batch_size","predict_batch_size", "min_epoch_to_log"]
+    dict_filter = lambda item: False if item[0] in not_wanted_keys else True
+    logged_cfg=dict(filter(dict_filter, cfg.items()))
+    pprint(logged_cfg)
+    logger.experiment.config.update(logged_cfg)
     print("WandbLogger id: {}".format(logger.version))
 
     trainer = pl.Trainer(
@@ -63,27 +69,36 @@ def train(cfg, result_name :Optional[str] = None):
                 patience=cfg["patience"],
                 verbose=True,
             ),
+            LearningRateMonitor(
+                logging_interval="epoch"
+            )
         ],
     )
 
     try:
+        print('started!!!')
         trainer.fit(model=model, datamodule=dataloader)
-    except KeyboardInterrupt:
-        pass
+    except KeyboardInterrupt as k:
+        print("KeyboardInterrupt during fitting:", k)
+    except TypeError as t:
+        print("TypeError during fitting:", t)
+    except Exception as e:
+        print("Exception during fitting:", e)
     finally:
-        if trainer.current_epoch>=1:
+        print("current epoch:", trainer.current_epoch)
+        if trainer.current_epoch > cfg["min_epoch_to_log"]:
             trainer.test(model=model, datamodule=dataloader, ckpt_path="best")
             # validation data로 모델의 prediction 결과를 result 폴더에 csv파일로 저장합니다.
-            val_result = model.val_result
-            val_result["tokenized"] = remove_pad_tokens(
-                val_result["tokenized"], tokenizer.pad_token
+            test_result = model.test_result
+            test_result["tokenized"] = remove_pad_tokens(
+                test_result["tokenized"], tokenizer.pad_token
             )
             if cfg['model_class'] == 'BaseModel':
-                val_result["target"] = num_to_label(val_result["target"])
-                val_result["predict"] = num_to_label(val_result["predict"])
-            val_result_df = pd.DataFrame(val_result)
-            val_result_df.to_csv(
-                cfg["result_dir"] + result_name + "/val_result.csv", index=False
+                test_result["target"] = num_to_label(test_result["target"])
+                test_result["predict"] = num_to_label(test_result["predict"])
+            test_result_df = pd.DataFrame(test_result)
+            test_result_df.to_csv(
+                cfg["result_dir"] + result_name + "/test_result.csv", index=False
             )
         else:
             wandb.finish()
@@ -91,7 +106,8 @@ def train(cfg, result_name :Optional[str] = None):
             api = wandb.Api()
             run = api.run("ggul_tiger/KLUE/{}".format(logger.version))
             run.delete(delete_artifacts=True)
-            if os.path.exists(result_name):
+
+            if os.path.exists('results/{}'.format(result_name)):
                 print('deleteing local folder : {}'.format(result_name))
                 shutil.rmtree('results/{}'.format(result_name))
 
