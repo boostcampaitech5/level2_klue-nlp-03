@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import pytorch_lightning as pl
 from transformers import AutoModelForSequenceClassification
 from utils import klue_re_auprc, klue_re_micro_f1
@@ -26,6 +27,13 @@ class BaseModel(pl.LightningModule):
             "predict": [],
         }
 
+    def forward(self, input):
+        return self.model(
+            input_ids=input["input_ids"].squeeze(),
+            token_type_ids=input["token_type_ids"].squeeze(),
+            attention_mask=input["attention_mask"].squeeze(),
+        )
+
     def configure_optimizers(self):
         MyOptim = eval("torch.optim." + self.cfg["optim"])
         optimizer = MyOptim(self.parameters(), lr=float(self.cfg["lr"]))
@@ -37,10 +45,11 @@ class BaseModel(pl.LightningModule):
 
     def compute_metrics(self, result):
         """loss와 score를 계산하는 함수"""
-        probs = result["logits"]
+        logits = result["logits"]
+        probs = F.softmax(logits, dim=1)
         preds = torch.argmax(probs, dim=1)
         labels = result["labels"]
-        loss = self.lossF(probs, labels)
+        loss = self.lossF(logits, labels)
         # calculate accuracy using sklearn's function
         f1 = klue_re_micro_f1(preds, labels)
         auprc = klue_re_auprc(probs, labels)
@@ -49,12 +58,7 @@ class BaseModel(pl.LightningModule):
         return {"loss": loss, "micro_F1_score": f1, "auprc": auprc, "accuracy": acc}
 
     def training_step(self, batch, batch_idx):
-        output = self.model(
-            input_ids=batch["input_ids"].squeeze(),
-            token_type_ids=batch["token_type_ids"].squeeze(),
-            attention_mask=batch["attention_mask"].squeeze(),
-        )
-
+        output = self.forward(batch)
         loss = self.lossF(output["logits"], batch["labels"])
 
         self.log("train_loss", loss)
@@ -62,11 +66,7 @@ class BaseModel(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        output = self.model(
-            input_ids=batch["input_ids"].squeeze(),
-            token_type_ids=batch["token_type_ids"].squeeze(),
-            attention_mask=batch["attention_mask"].squeeze(),
-        )
+        output = self.forward(batch)
         logits = output["logits"].detach().cpu()  # pt tensor (batch_size, num_labels)
         labels = batch["labels"].detach().cpu()  # pt tensor (batch_size)
         self.val_epoch_result["logits"] = torch.cat(
@@ -86,11 +86,7 @@ class BaseModel(pl.LightningModule):
         self.val_epoch_result["labels"] = torch.tensor([], dtype=torch.int64)
 
     def test_step(self, batch, batch_idx):
-        output = self.model(
-            input_ids=batch["input_ids"].squeeze(),
-            token_type_ids=batch["token_type_ids"].squeeze(),
-            attention_mask=batch["attention_mask"].squeeze(),
-        )
+        output = self.forward(batch)
 
         # 원래 문장, 원래 target, 모델의 prediction을 저장
         self.test_result["sentence"].extend(batch["sentence"])

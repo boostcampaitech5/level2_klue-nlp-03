@@ -13,8 +13,11 @@ def load_data(data_dir: str) -> pd.DataFrame:
     return df
 
 
-def label_to_num(label: List[str]) -> List[int]:
+def label_to_num(label: List) -> List:
     """문자열 class label을 숫자로 변환합니다."""
+    if label[0] == 100:  # test_data를 받은 경우
+        return label
+
     num_label = []
     with open("./src/dict_label_to_num.pkl", "rb") as f:
         dict_label_to_num = pickle.load(f)
