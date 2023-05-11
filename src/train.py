@@ -2,6 +2,7 @@ import yaml
 import pytorch_lightning as pl
 import pandas as pd
 import torch
+import torch.nn.functional as F
 
 from models import BaseModel
 from loader import KLUEDataLoader
@@ -94,9 +95,9 @@ def train(cfg, result_name: Optional[str] = None):
             label_list = []
 
             for output in pred_result:
-                logits = output["logits"]
-                preds = torch.argmax(logits, dim=1)
-                probs_list.extend(logits.tolist())
+                probs = F.softmax(output["logits"], dim=1)
+                preds = torch.argmax(probs, dim=1)
+                probs_list.extend(probs.tolist())
                 label_list.extend(preds.tolist())
 
             label_list = num_to_label(label_list)

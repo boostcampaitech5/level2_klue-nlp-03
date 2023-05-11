@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import pytorch_lightning as pl
 from transformers import AutoModelForSequenceClassification
 from utils import klue_re_auprc, klue_re_micro_f1
@@ -8,7 +9,6 @@ from sklearn.metrics import accuracy_score
 class BaseModel(pl.LightningModule):
     def __init__(self, tokenizer, cfg: dict):
         super().__init__()
-        self.save_hyperparameters()
         self.tokenizer = tokenizer
         self.cfg = cfg
         self.model = AutoModelForSequenceClassification.from_pretrained(
@@ -45,7 +45,7 @@ class BaseModel(pl.LightningModule):
 
     def compute_metrics(self, result):
         """loss와 score를 계산하는 함수"""
-        probs = result["logits"]
+        probs = F.softmax(result["logits"], dim=1)
         preds = torch.argmax(probs, dim=1)
         labels = result["labels"]
         loss = self.lossF(probs, labels)
