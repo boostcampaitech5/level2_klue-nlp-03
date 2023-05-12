@@ -58,6 +58,9 @@ class KLUEDataset(Dataset):
         # Case 01 ~ 03
         subj_type = item["subject_entity"]["type"]
         obj_type = item["object_entity"]["type"]
+        ## test
+        subj_type = self.convert(subj_type)
+        obj_type = self.convert(obj_type)
 
         # tokienize item with masking or marking
         sent = item['sentence']
@@ -100,6 +103,19 @@ class KLUEDataset(Dataset):
         )
         
         return tokenized_sentence
+    
+    def convert(string):
+        dictionary = {'PER':'PERSON',
+                    'ORG':'ORGANIZATION',
+                    'DAT': 'DATE TIME',
+                    'LOC':'LOCATION',
+                    'NOH':'NUMBER',
+                    'POH':'NOUN'
+        }
+        if string in dictionary.keys():
+            return dictionary[string]
+        else:
+            return string
 
 
 class KLUEDataLoader(pl.LightningDataModule):
