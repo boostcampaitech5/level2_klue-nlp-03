@@ -45,8 +45,8 @@ def preprocessing_dataset(df: pd.DataFrame) -> pd.DataFrame:
     for sub, obj in zip(df["subject_entity"], df["object_entity"]):
         sub = eval(sub)
         obj = eval(obj)
-        subject_entity.append(sub["word"])
-        object_entity.append(obj["word"])
+        subject_entity.append(sub)
+        object_entity.append(obj)
     out_dataset = pd.DataFrame(
         {
             "id": df["id"],
@@ -134,3 +134,20 @@ def remove_pad_tokens(sentences: List[str], pad_token: str) -> List[str]:
     """pad token만 제거하는 함수입니다."""
     ret = [sentence.replace(" " + pad_token, "") for sentence in sentences]
     return ret
+
+def mask_tokenizer_update(tokenizer, cfg):
+    """entity masking을 위해 tokenzier update하는 함수
+    """
+    df = pd.read_csv(cfg['train_dir'])
+    new_tokens = []
+    for sub, obj in zip(df["subject_entity"], df["object_entity"]):
+        sub = eval(sub)
+        obj = eval(obj)
+        subj_type = '[SUBJ-{}]'.format(sub['type'])
+        obj_type = '[OBJ-{}]'.format(obj['type'])
+        for token in (subj_type, obj_type):
+            if token not in new_tokens:
+                new_tokens.append(token)
+                tokenizer.add_tokens([token])
+
+    return tokenizer

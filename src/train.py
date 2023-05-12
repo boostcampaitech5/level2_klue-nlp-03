@@ -4,13 +4,14 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 
-from models import BaseModel
+from models import BaseModel, ModelWithBinaryClassification
 from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-from utils import get_result_name, num_to_label, remove_pad_tokens
+from utils import get_result_name, num_to_label, remove_pad_tokens,  mask_tokenizer_update
 from typing import Optional
+import os
 import wandb
 import shutil, os
 from pprint import pprint
@@ -30,13 +31,17 @@ def train(cfg, result_name :Optional[str] = None):
     tokenizer = AutoTokenizer.from_pretrained(
         cfg["model_name"], model_max_length=cfg["max_len"]
     )
-    model = BaseModel(tokenizer, cfg)
+    # marker, masking 옵션에 따른 tokenizer update
+    if cfg['input_format'] == 'entity_mask':
+        tokenizer = mask_tokenizer_update(tokenizer, cfg)
+
+    model = eval(cfg['model_class'])(tokenizer, cfg)
     dataloader = KLUEDataLoader(tokenizer, cfg)
 
     # wandb logger, ggul_tiger 팀으로 run이 기록됩니다.
     logger = WandbLogger(
         name=result_name, 
-        project="KLUE", 
+        project=cfg['project_name'], 
         entity="ggul_tiger"
     )
 
@@ -49,7 +54,7 @@ def train(cfg, result_name :Optional[str] = None):
 
     trainer = pl.Trainer(
         accelerator="gpu",
-        strategy="ddp",
+        # strategy="ddp",
         max_epochs=cfg["epoch"],
         logger=logger,
         default_root_dir=cfg["result_dir"] + result_name,
