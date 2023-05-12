@@ -14,6 +14,7 @@ class BaseModel(pl.LightningModule):
         self.model = AutoModelForSequenceClassification.from_pretrained(
             cfg["model_name"], num_labels=30
         )
+        self.model_resize()
         self.lossF = eval("torch.nn." + cfg["loss"])()
 
         self.val_epoch_result = {
@@ -27,8 +28,12 @@ class BaseModel(pl.LightningModule):
             "predict": [],
         }
     
-    #임시
-    def len_tokenizer(self): return len(self.tokenizer)
+    def model_resize(self):
+        before = self.model.config.vocab_size
+        self.model.resize_token_embeddings(len(self.tokenizer))
+        after = self.model.config.vocab_size
+        if before != after:
+            print(f'Model vocab_size changed : {before} -> {after}')
 
     def forward(self, input):
         return self.model(
@@ -116,6 +121,7 @@ class ModelWithBinaryClassification(BaseModel):
     def __init__(self, tokenizer, cfg: dict):
         super().__init__(tokenizer, cfg)
         self.model = AutoModel.from_pretrained(cfg["model_name"])
+        self.model_resize()
         self.lossBCE = torch.nn.BCEWithLogitsLoss()
         self.lossCE = eval("torch.nn." + cfg["loss"])()
         self.hidden_size = self.model.config.hidden_size
@@ -215,3 +221,60 @@ class ModelWithBinaryClassification(BaseModel):
         self.test_result["predict"].extend(
             torch.argmax(output['logits'], dim=1).tolist()
         )
+
+class ModelWithEntityMarker(BaseModel):
+    ''' ModelWithEntityMarker
+    Classifier with CLS tokens, entity marker(@, #) tokens
+    '''
+    def __init__(self, tokenizer, cfg: dict):
+        super().__init__(tokenizer, cfg)
+        self.model = AutoModel.from_pretrained(cfg["model_name"])
+        self.model_resize()
+        self.lossF = eval("torch.nn." + cfg["loss"])()
+        self.hidden_size = self.model.config.hidden_size
+        self.classifier = torch.nn.Linear(self.hidden_size, 30)
+        self.dropout = torch.nn.Dropout(0.1)
+        self.activation = torch.nn.Tanh()
+        self.markers = '@#'
+        self.marker_ids = self.tokenizer(self.markers, add_special_tokens=False)['input_ids']
+
+
+    def forward(self, input):
+        outputs = self.model(
+            input_ids=input["input_ids"].squeeze(),
+            token_type_ids=input["token_type_ids"].squeeze(),
+            attention_mask=input["attention_mask"].squeeze(),
+        )
+
+        pooler_output = self.mean_pooling(input['input_ids'], outputs['last_hidden_state'])
+        pooler_output = self.activation(pooler_output)
+        pooler_output = self.dropout(pooler_output)
+        pooler_output = self.classifier(pooler_output)
+             
+        return {'logits':pooler_output}
+    
+    def mean_pooling(self, batch_input_ids, last_hidden_state):
+        pooler_output = torch.Tensor()
+        for i, input_ids in batch_input_ids:
+
+            marker_index = self.get_marker_index(self, input_ids)
+ 
+            hidden_states = torch.cat([
+                last_hidden_state[i,0],
+                last_hidden_state[i, marker_index[0][0]:marker_index[0][1] + 1],
+                last_hidden_state[i, marker_index[1][0]:marker_index[1][1] + 1]
+            ], dim=1).unsqueeze(0)
+            hidden_states = torch.mean(hidden_states, dim=1)
+            pooler_output = torch.cat([pooler_output, hidden_states],dim=0)
+        return pooler_output
+
+    def get_marker_index(self, input_ids):
+        marker1, marker2 = list(), list()
+        for i, ids in enumerate(input_ids):
+            if ids == self.marker_ids[0]:
+                marker1.append(i)
+            if ids == self.marker_ids[1]:
+                marker2.append(i)
+            if len(marker1)==2 and len(marker2)==2:
+                break
+        return (marker1, marker2)

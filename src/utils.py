@@ -148,6 +148,6 @@ def mask_tokenizer_update(tokenizer, cfg):
         for token in (subj_type, obj_type):
             if token not in new_tokens:
                 new_tokens.append(token)
-                tokenizer.add_tokens([token])
+    tokenizer.add_tokens(new_tokens, special_tokens=True)
 
     return tokenizer
