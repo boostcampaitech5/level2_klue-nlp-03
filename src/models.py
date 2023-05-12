@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
 from transformers import AutoModelForSequenceClassification, AutoModel
-from utils import klue_re_auprc, klue_re_micro_f1
+from utils import klue_re_auprc, klue_re_micro_f1, model_freeze
 from sklearn.metrics import accuracy_score
 
 
@@ -115,9 +115,76 @@ class BaseModel(pl.LightningModule):
         preds = torch.argmax(probs, dim=1)
         return {'preds':preds, 'probs':probs}
 
+class ModelWithEntityMarker(BaseModel):
+    ''' ModelWithEntityMarker
+    Classifier with CLS tokens, entity marker(@, #) tokens
+    '''
+    def __init__(self, tokenizer, cfg: dict):
+        super().__init__(tokenizer, cfg)
+        self.model = AutoModel.from_pretrained(cfg["model_name"])
+        self.model_resize()
+        # self.model = model_freeze(self.model)
+        self.lossF = eval("torch.nn." + cfg["loss"])()
+        self.hidden_size = self.model.config.hidden_size
+        self.classifier = torch.nn.Linear(self.hidden_size, 30)
+        self.dropout = torch.nn.Dropout(0.1)
+        self.activation = torch.nn.Tanh()
+        if cfg['input_format'] in ['entity_marker_punct', 'typed_entity_marker_punct']:
+            self.markers = '@#' 
+            self.marker_ids = self.tokenizer(self.markers, add_special_tokens=False)['input_ids']
+            self.marker_ids = {markers:ids for markers, ids in zip(self.markers, self.marker_ids)}
+        elif cfg['input_format'] == 'default':
+            self.marker_ids = {tokenizer.cls_token:tokenizer.cls_token_id, tokenizer.sep_token:tokenizer.sep_token_id}
+        else:
+            self.marker_ids = tokenizer.get_added_vocab()
 
-# test
-class BinaryClassifier(BaseModel):
+    def forward(self, input):
+        outputs = self.model(
+            input_ids=input["input_ids"].squeeze(),
+            token_type_ids=input["token_type_ids"].squeeze(),
+            attention_mask=input["attention_mask"].squeeze(),
+        )
+
+        pooler_output = self.mean_pooling(input['input_ids'], outputs['last_hidden_state'])
+        pooler_output = self.activation(pooler_output)
+        pooler_output = self.dropout(pooler_output)
+        pooler_output = self.classifier(pooler_output)
+             
+        return {'logits':pooler_output}
+    
+    def mean_pooling(self, batch_input_ids, last_hidden_state):
+        pooler_output = torch.Tensor().to(self.device)
+
+        for i, input_ids in enumerate(batch_input_ids):
+            
+            marker1, marker2 = self.get_marker_index(input_ids.squeeze())
+            try:
+                hidden_states = torch.cat([
+                    last_hidden_state[i,0].view(-1, self.hidden_size),
+                    last_hidden_state[i, marker1[0]:marker1[1] + 1].view(-1, self.hidden_size),
+                    last_hidden_state[i, marker2[0]:marker2[1] + 1].view(-1, self.hidden_size)
+                ], dim=0).unsqueeze(0)
+                hidden_states = torch.mean(hidden_states, dim=1)
+            except:
+                hidden_states = last_hidden_state[i,0].unsqueeze(0)
+            pooler_output = torch.cat([pooler_output, hidden_states],dim=0)
+
+        return pooler_output
+
+    def get_marker_index(self, input_ids):
+        """ entity_marker_punct"""
+        marker_index = []
+        for i, ids in enumerate(input_ids):
+            if ids in self.marker_ids.values():
+                marker_index.append(i)
+            if self.cfg['input_format'] == 'entity_mask' and len(marker_index)==2:
+                return ([marker_index[0],marker_index[0]], [marker_index[1], marker_index[1]])
+            elif len(marker_index) == 4:
+                break
+
+        return (marker_index[:2], marker_index[2:])
+    
+class BinaryClassifier(ModelWithEntityMarker):
     ''' BinaryClassifier
     which picks up 'no-relation' or not
     '''
@@ -126,7 +193,9 @@ class BinaryClassifier(BaseModel):
         self.model = AutoModelForSequenceClassification.from_pretrained(
             cfg["model_name"], num_labels=1)
         self.model_resize()
-        self.lossF = torch.nn.BCEWithLogitsLoss()
+        self.lossF = torch.nn.BCELoss()
+        self.classifier = torch.nn.Linear(self.hidden_size, 1)
+        self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, input):
         outputs = self.model(
@@ -134,12 +203,12 @@ class BinaryClassifier(BaseModel):
             token_type_ids=input["token_type_ids"].squeeze(),
             attention_mask=input["attention_mask"].squeeze(),
         )
-        return {'logits':torch.nn.Sigmoid(outputs['logits'])}
+        return {'logits':self.sigmoid(outputs['logits'])}
     
     def compute_metrics(self, result):
         """loss와 score를 계산하는 함수"""
         logits = result["logits"]
-        preds = torch.where(logits>=0.5, 1, 0)
+        preds = torch.where(logits>=0.5, 1., 0.)
         labels = result["labels"]
         loss = self.lossF(logits, labels)
         # calculate accuracy using sklearn's function
@@ -177,89 +246,23 @@ class BinaryClassifier(BaseModel):
 
     def test_step(self, batch, batch_idx):
         output = self.forward(batch)
+        labels = (batch['labels']!=0).bool().float().squeeze()
 
         # 원래 문장, 원래 target, 모델의 prediction을 저장
         self.test_result["sentence"].extend(batch["sentence"])
         self.test_result["tokenized"].extend(
             self.tokenizer.batch_decode(batch["input_ids"].squeeze())
         )
-        self.test_result["target"].extend(batch["labels"].tolist())
+        self.test_result["target"].extend(labels.tolist())
         self.test_result["predict"].extend(
             torch.where(output["logits"]>0.5, 1, 0).tolist()
         )
     
     def predict_step(self, batch, batch_idx):
         output = self.forward(batch)
-        probs = F.softmax(output['logits'],dim=1)
-        preds = torch.where(output['logits']>=0.5, 1, 0)
+        logits = output['logits']
+        other_probs = ((1-output['logits'])/29).expand(-1,29)
+        probs = torch.cat([logits, other_probs], dim=1)
+        assert probs.size(-1) == 30, 'lael size should be 30'
+        preds = torch.where(logits>=0.5, 1., 0.).squeeze()
         return {'preds':preds, 'probs':probs}
-
-class ModelWithEntityMarker(BaseModel):
-    ''' ModelWithEntityMarker
-    Classifier with CLS tokens, entity marker(@, #) tokens
-    '''
-    def __init__(self, tokenizer, cfg: dict):
-        super().__init__(tokenizer, cfg)
-        self.model = AutoModel.from_pretrained(cfg["model_name"])
-        self.model_resize()
-        self.lossF = eval("torch.nn." + cfg["loss"])()
-        self.hidden_size = self.model.config.hidden_size
-        self.classifier = torch.nn.Linear(self.hidden_size, 30)
-        self.dropout = torch.nn.Dropout(0.1)
-        self.activation = torch.nn.Tanh()
-        if cfg['input_format'] in ['entity_marker_punct', 'typed_entity_marker_punct']:
-            self.markers = '@#' 
-            self.marker_ids = self.tokenizer(self.markers, add_special_tokens=False)['input_ids']
-            self.marker_ids = {markers:ids for markers, ids in zip(self.markers, self.marker_ids)}
-        elif cfg['input_format'] == 'default':
-            self.marker_ids = {tokenizer.cls_token:tokenizer.cls_token_id, tokenizer.sep_token:tokenizer.sep_token_id}
-        else:
-            self.marker_ids = self.tokenizer.get_added_vocab()
-
-
-
-    def forward(self, input):
-        outputs = self.model(
-            input_ids=input["input_ids"].squeeze(),
-            token_type_ids=input["token_type_ids"].squeeze(),
-            attention_mask=input["attention_mask"].squeeze(),
-        )
-
-        pooler_output = self.mean_pooling(input['input_ids'], outputs['last_hidden_state'])
-        pooler_output = self.activation(pooler_output)
-        pooler_output = self.dropout(pooler_output)
-        pooler_output = self.classifier(pooler_output)
-             
-        return {'logits':pooler_output}
-    
-    def mean_pooling(self, batch_input_ids, last_hidden_state):
-        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        pooler_output = torch.Tensor().to(device)
-
-        for i, input_ids in enumerate(batch_input_ids):
-            
-            marker1, marker2 = self.get_marker_index(input_ids.squeeze())
- 
-            hidden_states = torch.cat([
-                last_hidden_state[i,0].view(-1, self.hidden_size),
-                last_hidden_state[i, marker1[0]:marker1[1] + 1].view(-1, self.hidden_size),
-                last_hidden_state[i, marker2[0]:marker2[1] + 1].view(-1, self.hidden_size)
-            ], dim=0).unsqueeze(0)
-            hidden_states = torch.mean(hidden_states, dim=1)
-
-            pooler_output = torch.cat([pooler_output, hidden_states],dim=0)
-            # same gpu
-        return pooler_output
-
-    def get_marker_index(self, input_ids):
-        """ entity_marker_punct"""
-        marker_index = []
-        for i, ids in enumerate(input_ids):
-            if ids in self.marker_ids.values():
-                marker_index.append(i)
-            if self.cfg['input_format'] == 'entity_mask' and len(marker_index)==2:
-                return ([marker_index[0],marker_index[0]], [marker_index[1], marker_index[1]])
-            elif len(marker_index) == 4:
-                break
-
-        return (marker_index[:2], marker_index[2:])
