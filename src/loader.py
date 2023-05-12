@@ -79,13 +79,13 @@ class KLUEDataset(Dataset):
         # Case 03 : typed_entity_marker_punct
         elif self.input_format == 'typed_entity_marker_punct':
             # change format of subj/obj type 
-            subj_type = self.tokenizer.tokenize(subj_type.replace("_", " ").lower()) 
-            obj_type = self.tokenizer.tokenize(obj_type.replace("_", " ").lower())
+            subj_type = subj_type.replace("_", " ").lower()
+            obj_type = obj_type.replace("_", " ").lower()
             # add marker token
             subj_idx = sent.find(subj_word)
-            sent = sent[:subj_idx] + '@ * ' + subj_word + '* @' + sent[subj_idx+len(subj_word):]
+            sent = sent[:subj_idx] + '@ * ' + subj_type + ' * ' + subj_word + ' @' + sent[subj_idx+len(subj_word):]
             obj_idx = sent.find(obj_word)
-            sent = sent[:obj_idx] + '# ^ ' + obj_word + ' ^ #' + sent[obj_idx+len(obj_word):]
+            sent = sent[:obj_idx] + '# ^ ' + obj_type + ' ^ ' + obj_word + ' #' + sent[obj_idx+len(obj_word):]
         
         # ModelWithBinaryClassification
         if self.model_class == 'ModelWithBinaryClassification':
