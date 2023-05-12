@@ -91,7 +91,7 @@ def train(cfg, result_name :Optional[str] = None):
         print("Exception during fitting:", e)
     finally:
         print("current epoch:", trainer.current_epoch)
-        if trainer.current_epoch > cfg["min_epoch_to_log"]:
+        if trainer.current_epoch >= cfg["min_epoch_to_log"]:
             # test stage
             trainer.test(model=model, datamodule=dataloader, ckpt_path="best")
             # validation data로 모델의 prediction 결과를 result 폴더에 csv파일로 저장합니다.
