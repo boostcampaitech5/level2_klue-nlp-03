@@ -117,24 +117,16 @@ class BaseModel(pl.LightningModule):
 
 
 # test
-class ModelWithBinaryClassification(BaseModel):
-    ''' ModelWithBinaryClassification
+class BinaryClassifier(BaseModel):
+    ''' BinaryClassifier
     which picks up 'no-relation' or not
     '''
     def __init__(self, tokenizer, cfg: dict):
         super().__init__(tokenizer, cfg)
-        self.model = AutoModel.from_pretrained(cfg["model_name"])
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            cfg["model_name"], num_labels=1)
         self.model_resize()
-        self.lossBCE = torch.nn.BCEWithLogitsLoss()
-        self.lossCE = eval("torch.nn." + cfg["loss"])()
-        self.hidden_size = self.model.config.hidden_size
-        self.pooler = torch.nn.Linear(self.hidden_size, self.hidden_size)
-        self.multi_classifier = torch.nn.Linear(self.hidden_size*2, 30)
-        self.bi_classifier = torch.nn.Linear(self.hidden_size, 1)
-        self.dropout = torch.nn.Dropout(0.1)
-        self.activation = torch.nn.Tanh()
-        self.alpha = 0.6
-
+        self.lossF = torch.nn.BCEWithLogitsLoss()
 
     def forward(self, input):
         outputs = self.model(
@@ -142,60 +134,33 @@ class ModelWithBinaryClassification(BaseModel):
             token_type_ids=input["token_type_ids"].squeeze(),
             attention_mask=input["attention_mask"].squeeze(),
         )
-        multiclf_token = self.dropout(outputs['pooler_output']) # (N, hdim)
-
-        biclf_token = outputs['last_hidden_state'][:,1]
-        biclf_token = self.pooler(biclf_token)
-        biclf_token = self.activation(biclf_token) # (N, hdim)
-        biclf = self.dropout(biclf_token)
-        biclf = self.bi_classifier(biclf) # (N, 1)
-
-        multiclf = torch.cat([multiclf_token,biclf_token],dim=1) # (N,hdim*2)
-        multiclf = self.multi_classifier(multiclf) # (N, 30)
-
-        return {'logits':multiclf, 'bi':biclf}
-        
-
+        return {'logits':torch.nn.Sigmoid(outputs['logits'])}
+    
     def compute_metrics(self, result):
         """loss와 score를 계산하는 함수"""
-        probs = result["logits"]
-        preds = torch.argmax(probs, dim=1)
+        logits = result["logits"]
+        preds = torch.where(logits>=0.5, 1, 0)
         labels = result["labels"]
-        # loss = self.lossF(probs, labels)
+        loss = self.lossF(logits, labels)
         # calculate accuracy using sklearn's function
-        f1 = klue_re_micro_f1(preds, labels)
-        auprc = klue_re_auprc(probs, labels)
         acc = accuracy_score(labels, preds)  # 리더보드 평가에는 포함되지 않습니다.
 
-        return {
-            # "loss": loss,
-             "micro_F1_score": f1, "auprc": auprc,
-                 "accuracy": acc}
+        return {"loss": loss, "accuracy": acc}
+
     def training_step(self, batch, batch_idx):
-        output = self(batch)
-
-        binary_labels = (batch['labels']!=0).bool().float().unsqueeze(1)
-
-        loss_bi = self.lossBCE(output['bi'], binary_labels) * self.alpha
-        loss_mul = self.lossCE(output['logits'], batch['labels']) * (1-self.alpha)
-        loss = loss_bi + loss_mul
+        output = self.forward(batch)
+        labels = (batch['labels']!=0).bool().float().unsqueeze(1)
+        loss = self.lossF(output["logits"], labels)
 
         self.log("train_loss", loss)
 
         return loss
 
     def validation_step(self, batch, batch_idx):
-        output = self(batch)
-        binary_labels = (batch['labels']!=0).bool().float().unsqueeze(1)
-
-        loss_bi = self.lossBCE(output['bi'], binary_labels) * self.alpha
-        loss_mul = self.lossCE(output['logits'], batch['labels']) * (1-self.alpha)
-        loss = loss_bi + loss_mul
-
-        logits = output['logits'].detach().cpu()
-        labels = batch['labels'].detach().cpu()
-
-        self.log("val_loss", loss, sync_dist=True, on_epoch=True)
+        output = self.forward(batch)
+        logits = output["logits"].detach().cpu() 
+        labels = (batch['labels']!=0).bool().float().unsqueeze(1)
+        labels = labels.detach().cpu() 
         self.val_epoch_result["logits"] = torch.cat(
             (self.val_epoch_result["logits"], logits), dim=0
         )
@@ -205,15 +170,13 @@ class ModelWithBinaryClassification(BaseModel):
 
     def on_validation_epoch_end(self):
         metrics = self.compute_metrics(self.val_epoch_result)
-        # self.log("val_loss", metrics["loss"], sync_dist=True)
-        self.log("val_micro_F1_score", metrics["micro_F1_score"], sync_dist=True)
-        self.log("val_auprc", metrics["auprc"], sync_dist=True)
+        self.log("val_loss", metrics["loss"], sync_dist=True)
         self.log("val_accuracy", metrics["accuracy"], sync_dist=True)
         self.val_epoch_result["logits"] = torch.tensor([], dtype=torch.float32)
         self.val_epoch_result["labels"] = torch.tensor([], dtype=torch.int64)
 
     def test_step(self, batch, batch_idx):
-        output = self(batch)
+        output = self.forward(batch)
 
         # 원래 문장, 원래 target, 모델의 prediction을 저장
         self.test_result["sentence"].extend(batch["sentence"])
@@ -222,8 +185,14 @@ class ModelWithBinaryClassification(BaseModel):
         )
         self.test_result["target"].extend(batch["labels"].tolist())
         self.test_result["predict"].extend(
-            torch.argmax(output['logits'], dim=1).tolist()
+            torch.where(output["logits"]>0.5, 1, 0).tolist()
         )
+    
+    def predict_step(self, batch, batch_idx):
+        output = self.forward(batch)
+        probs = F.softmax(output['logits'],dim=1)
+        preds = torch.where(output['logits']>=0.5, 1, 0)
+        return {'preds':preds, 'probs':probs}
 
 class ModelWithEntityMarker(BaseModel):
     ''' ModelWithEntityMarker
@@ -238,11 +207,15 @@ class ModelWithEntityMarker(BaseModel):
         self.classifier = torch.nn.Linear(self.hidden_size, 30)
         self.dropout = torch.nn.Dropout(0.1)
         self.activation = torch.nn.Tanh()
-        self.markers = '@#'
-        self.marker_ids = self.tokenizer(self.markers, add_special_tokens=False)['input_ids']
+        if cfg['input_format'] in ['entity_marker_punct', 'typed_entity_marker_punct']:
+            self.markers = '@#' 
+            self.marker_ids = self.tokenizer(self.markers, add_special_tokens=False)['input_ids']
+            self.marker_ids = {markers:ids for markers, ids in zip(self.markers, self.marker_ids)}
+        elif cfg['input_format'] == 'default':
+            self.marker_ids = {tokenizer.cls_token:tokenizer.cls_token_id, tokenizer.sep_token:tokenizer.sep_token_id}
+        else:
+            self.marker_ids = self.tokenizer.get_added_vocab()
 
-        if cfg['input_format'] not in ('entity_marker_punct', 'typed_entity_marker_punct'):
-            raise Exception("Input format should be [`entity_marker_punct`, `typed_entity_marker_punct`]")
 
 
     def forward(self, input):
@@ -262,8 +235,9 @@ class ModelWithEntityMarker(BaseModel):
     def mean_pooling(self, batch_input_ids, last_hidden_state):
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         pooler_output = torch.Tensor().to(device)
-        for i, input_ids in enumerate(batch_input_ids):
 
+        for i, input_ids in enumerate(batch_input_ids):
+            
             marker1, marker2 = self.get_marker_index(input_ids.squeeze())
  
             hidden_states = torch.cat([
@@ -278,12 +252,14 @@ class ModelWithEntityMarker(BaseModel):
         return pooler_output
 
     def get_marker_index(self, input_ids):
-        marker1, marker2 = list(), list()
+        """ entity_marker_punct"""
+        marker_index = []
         for i, ids in enumerate(input_ids):
-            if ids == self.marker_ids[0]:
-                marker1.append(i)
-            if ids == self.marker_ids[1]:
-                marker2.append(i)
-            if len(marker1)==2 and len(marker2)==2:
+            if ids in self.marker_ids.values():
+                marker_index.append(i)
+            if self.cfg['input_format'] == 'entity_mask' and len(marker_index)==2:
+                return ([marker_index[0],marker_index[0]], [marker_index[1], marker_index[1]])
+            elif len(marker_index) == 4:
                 break
-        return (marker1, marker2)
+
+        return (marker_index[:2], marker_index[2:])
