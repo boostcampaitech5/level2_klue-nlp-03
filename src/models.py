@@ -1,6 +1,8 @@
 import torch
+import torch.nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+import custom_loss
 from transformers import AutoModelForSequenceClassification, AutoModel
 from utils import klue_re_auprc, klue_re_micro_f1
 from sklearn.metrics import accuracy_score
@@ -14,7 +16,12 @@ class BaseModel(pl.LightningModule):
         self.model = AutoModelForSequenceClassification.from_pretrained(
             cfg["model_name"], num_labels=30
         )
-        self.lossF = eval("torch.nn." + cfg["loss"])()
+        self.lossF = eval(cfg["loss"])
+
+        if self.lossF == "nn.CrossEntropyLoss":
+            self.lossF = self.lossF(weight=cfg["class_weight"])
+        elif self.lossF == "custom_loss.FocalLoss":
+            self.lossF = self.lossF(alpha=cfg["class_weight"], gamma=cfg["FocalLoss_gamma"])
 
         self.val_epoch_result = {
             "logits": torch.tensor([], dtype=torch.float32),
