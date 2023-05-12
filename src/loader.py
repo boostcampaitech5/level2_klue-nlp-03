@@ -4,6 +4,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from utils import label_to_num, load_data, preprocessing_dataset
+import re 
 
 
 class KLUEDataset(Dataset):
@@ -58,12 +59,15 @@ class KLUEDataset(Dataset):
         # Case 01 ~ 03
         subj_type = item["subject_entity"]["type"]
         obj_type = item["object_entity"]["type"]
-        ## test
-        subj_type = self.convert(subj_type)
-        obj_type = self.convert(obj_type)
 
         # tokienize item with masking or marking
         sent = item['sentence']
+
+        ## test
+        subj_type = self.convert(subj_type)
+        obj_type = self.convert(obj_type)
+        sent = self.preprocessing(sent)
+
         subj_word = item["subject_entity"]["word"]
         obj_word = item["object_entity"]["word"]
 
@@ -104,7 +108,7 @@ class KLUEDataset(Dataset):
         
         return tokenized_sentence
     
-    def convert(string):
+    def convert(self, string):
         dictionary = {'PER':'PERSON',
                     'ORG':'ORGANIZATION',
                     'DAT': 'DATE TIME',
@@ -116,6 +120,16 @@ class KLUEDataset(Dataset):
             return dictionary[string]
         else:
             return string
+    
+    def preprocessing(self, sent):
+        patterns = [
+                (r'[#@^*]', ''),
+                (r'\s+', ' ') # 이중 공백 제거
+            ]
+
+        for old, new in patterns:
+            sent = re.sub(old, new, sent)
+        return sent.strip()
 
 
 class KLUEDataLoader(pl.LightningDataModule):
