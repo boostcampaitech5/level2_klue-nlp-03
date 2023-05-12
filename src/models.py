@@ -241,6 +241,9 @@ class ModelWithEntityMarker(BaseModel):
         self.markers = '@#'
         self.marker_ids = self.tokenizer(self.markers, add_special_tokens=False)['input_ids']
 
+        if cfg['input_format'] not in ('entity_marker_punct', 'typed_entity_marker_punct'):
+            raise Exception("Input format should be [`entity_marker_punct`, `typed_entity_marker_punct`]")
+
 
     def forward(self, input):
         outputs = self.model(
@@ -257,18 +260,21 @@ class ModelWithEntityMarker(BaseModel):
         return {'logits':pooler_output}
     
     def mean_pooling(self, batch_input_ids, last_hidden_state):
-        pooler_output = torch.Tensor()
-        for i, input_ids in batch_input_ids:
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        pooler_output = torch.Tensor().to(device)
+        for i, input_ids in enumerate(batch_input_ids):
 
-            marker_index = self.get_marker_index(self, input_ids)
+            marker1, marker2 = self.get_marker_index(input_ids.squeeze())
  
             hidden_states = torch.cat([
-                last_hidden_state[i,0],
-                last_hidden_state[i, marker_index[0][0]:marker_index[0][1] + 1],
-                last_hidden_state[i, marker_index[1][0]:marker_index[1][1] + 1]
-            ], dim=1).unsqueeze(0)
+                last_hidden_state[i,0].view(-1, self.hidden_size),
+                last_hidden_state[i, marker1[0]:marker1[1] + 1].view(-1, self.hidden_size),
+                last_hidden_state[i, marker2[0]:marker2[1] + 1].view(-1, self.hidden_size)
+            ], dim=0).unsqueeze(0)
             hidden_states = torch.mean(hidden_states, dim=1)
+
             pooler_output = torch.cat([pooler_output, hidden_states],dim=0)
+            # same gpu
         return pooler_output
 
     def get_marker_index(self, input_ids):

@@ -15,7 +15,7 @@ class KLUEDataset(Dataset):
         self.model_class = model_class
         self.input_format = input_format
 
-        if self.input_format not in ('default', 'entity_mask', 'entity_marker_punct', 'typed_entity_marker_punct'):
+        if self.input_format not in ('default', 'entity_mask','entity_marker','entity_marker_punct','typed_entity_marker', 'typed_entity_marker_punct'):
             raise Exception("Invalid input format!")
 
     def __len__(self):

@@ -19,6 +19,7 @@ from pprint import pprint
 # warning ignore(임시)
 import warnings
 warnings.filterwarnings(action='ignore')
+os.environ['TOKENIZERS_PARALLELISM'] = '1'
 
 def train(cfg, result_name :Optional[str] = None):
     # set random seed

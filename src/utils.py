@@ -144,7 +144,7 @@ def tokenizer_update(tokenizer, cfg):
     
     df = pd.read_csv(cfg['train_dir'])
     new_tokens = []
-
+    types = []
     if input_format == 'entity_marker':
         new_tokens = ['[E1]','[/E1]','[E2]','[/E2]']
     else:
@@ -154,13 +154,13 @@ def tokenizer_update(tokenizer, cfg):
             if input_format == 'entity_mask':
                 subj_type = '[SUBJ-{}]'.format(sub['type'])
                 obj_type = '[OBJ-{}]'.format(obj['type'])
-                types = (subj_type, obj_type)
+                types = [subj_type, obj_type]
             elif input_format == 'typed_entity_marker':
                 subj_type1 = '[S:{}]'.format(sub['type'])
                 subj_type2 = '[/S:{}]'.format(sub['type'])
                 obj_type1 = '[O:{}]'.format(obj['type'])
                 obj_type2 = '[/O:{}]'.format(obj['type'])
-                types = (subj_type1, subj_type2, obj_type1, obj_type2)
+                types = [subj_type1, subj_type2, obj_type1, obj_type2]
             for token in types:
                 if token not in new_tokens:
                     new_tokens.append(token)
