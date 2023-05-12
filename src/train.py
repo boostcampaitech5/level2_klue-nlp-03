@@ -4,7 +4,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 
-from models import BaseModel, ModelWithBinaryClassification, ModelWithEntityMarker
+from models import BaseModel, BinaryClassifier, ModelWithEntityMarker
 from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger

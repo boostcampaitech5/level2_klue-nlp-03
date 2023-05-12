@@ -63,11 +63,13 @@ class KLUEDataset(Dataset):
         # tokienize item with masking or marking
         sent = item['sentence']
 
-        # preprocessing
-        sent = self.preprocessing(sent)
-
         subj_word = item["subject_entity"]["word"]
         obj_word = item["object_entity"]["word"]
+
+        # preprocessing
+        sent = self.preprocessing(sent)
+        subj_word = self.preprocessing(subj_word)
+        obj_word = self.preprocessing(obj_word)
 
         # Case 01 : entity_mask
         if self.input_format == 'entity_mask':
