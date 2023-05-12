@@ -23,7 +23,7 @@ parameters:
     value: StepLR(optimizer, step_size=2, gamma=0.85)
 
   batch_size: 
-    values: [64] # [32, 64]
+    value: 64
   val_batch_size:
     value: 32
   test_batch_size:
@@ -31,11 +31,11 @@ parameters:
   predict_batch_size:
     value: 32
   max_len: 
-    values: [256] # [200,256]
+    value: 256
   val_size: 
     value: 0.2
   epoch: 
-    value: 10
+    value: 1
   loss: 
     value: CrossEntropyLoss
   optim: 
@@ -43,9 +43,9 @@ parameters:
   patience:
     value: 10
   model_class:
-    value: BaseModel
+    values: [BaseModel] # BaseModel, ModelWithBinaryClassification, ModelWithEntityMarker
   input_format:
-    values: [entity_mask, typed_entity_marker_punct] 
+    values: [default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct] 
     # default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
 
   earlystopping_monitor:
@@ -54,7 +54,7 @@ parameters:
     value: val_micro_F1_score
 
   min_epoch_to_log:
-    value: 1
+    value: 0
 
   train_dir: 
     value: ./data/train_data.csv
