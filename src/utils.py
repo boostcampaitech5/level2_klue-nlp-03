@@ -135,19 +135,35 @@ def remove_pad_tokens(sentences: List[str], pad_token: str) -> List[str]:
     ret = [sentence.replace(" " + pad_token, "") for sentence in sentences]
     return ret
 
-def mask_tokenizer_update(tokenizer, cfg):
+def tokenizer_update(tokenizer, cfg):
     """entity masking을 위해 tokenzier update하는 함수
     """
+    input_format = cfg['input_format']
+    if input_format in ['default','entity_marker_punct, typed_entity_marker_punct']:
+        return tokenizer
+    
     df = pd.read_csv(cfg['train_dir'])
     new_tokens = []
-    for sub, obj in zip(df["subject_entity"], df["object_entity"]):
-        sub = eval(sub)
-        obj = eval(obj)
-        subj_type = '[SUBJ-{}]'.format(sub['type'])
-        obj_type = '[OBJ-{}]'.format(obj['type'])
-        for token in (subj_type, obj_type):
-            if token not in new_tokens:
-                new_tokens.append(token)
-    tokenizer.add_tokens(new_tokens, special_tokens=True)
 
+    if input_format == 'entity_marker':
+        new_tokens = ['[E1]','[/E1]','[E2]','[/E2]']
+    else:
+        for sub, obj in zip(df["subject_entity"], df["object_entity"]):
+            sub = eval(sub)
+            obj = eval(obj)
+            if input_format == 'entity_mask':
+                subj_type = '[SUBJ-{}]'.format(sub['type'])
+                obj_type = '[OBJ-{}]'.format(obj['type'])
+                types = (subj_type, obj_type)
+            elif input_format == 'typed_entity_marker':
+                subj_type1 = '[S:{}]'.format(sub['type'])
+                subj_type2 = '[/S:{}]'.format(sub['type'])
+                obj_type1 = '[O:{}]'.format(obj['type'])
+                obj_type2 = '[/O:{}]'.format(obj['type'])
+                types = (subj_type1, subj_type2, obj_type1, obj_type2)
+            for token in types:
+                if token not in new_tokens:
+                    new_tokens.append(token)
+
+    tokenizer.add_tokens(new_tokens, special_tokens=True)
     return tokenizer

@@ -32,8 +32,11 @@ class BaseModel(pl.LightningModule):
         before = self.model.config.vocab_size
         self.model.resize_token_embeddings(len(self.tokenizer))
         after = self.model.config.vocab_size
+        print(f"Model input format : {self.cfg['input_format']}")
         if before != after:
             print(f'Model vocab_size changed : {before} -> {after}')
+        else:
+            print(f"Model vocab size : {after}")
 
     def forward(self, input):
         return self.model(

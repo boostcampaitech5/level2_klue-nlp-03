@@ -56,16 +56,14 @@ class KLUEDataset(Dataset):
             )
             return tokenized_sentence
         
-        # Case 01 ~ 03
+        # Case 01 ~ 05
         subj_type = item["subject_entity"]["type"]
         obj_type = item["object_entity"]["type"]
 
         # tokienize item with masking or marking
         sent = item['sentence']
 
-        ## test
-        subj_type = self.convert(subj_type)
-        obj_type = self.convert(obj_type)
+        # preprocessing
         sent = self.preprocessing(sent)
 
         subj_word = item["subject_entity"]["word"]
@@ -73,17 +71,40 @@ class KLUEDataset(Dataset):
 
         # Case 01 : entity_mask
         if self.input_format == 'entity_mask':
+            subj_type = f'[SUBJ-{subj_type}]'
+            obj_type = f'[OBJ-{obj_type}]'
             sent = sent.replace(subj_word, subj_type)
             sent = sent.replace(obj_word, obj_type)
 
-        # Case 02 : entity_marker_punct
+         # Case 02 : entity_marker
+        elif self.input_format == 'entity_marker':
+            subj_idx = sent.find(subj_word)
+            sent = sent[:subj_idx] + '[E1]' + subj_word + '[/E1]' + sent[subj_idx+len(subj_word):]
+            obj_idx = sent.find(obj_word)
+            sent = sent[:obj_idx] + '[E2]' + obj_word + '[/E2]' + sent[obj_idx+len(obj_word):]
+
+        # Case 03 : entity_marker_punct
         elif self.input_format == 'entity_marker_punct':
             subj_idx = sent.find(subj_word)
             sent = sent[:subj_idx] + '@' + subj_word + '@' + sent[subj_idx+len(subj_word):]
             obj_idx = sent.find(obj_word)
             sent = sent[:obj_idx] + '#' + obj_word + '#' + sent[obj_idx+len(obj_word):]
 
-        # Case 03 : typed_entity_marker_punct
+        # Case 04 : typed_entity_marker
+        elif self.input_format == 'typed_entity_marker':
+            # change format of subj/obj type 
+            subj_type1 = '[S:{}]'.format(subj_type)
+            subj_type2 = '[/S:{}]'.format(subj_type)
+            obj_type1 = '[O:{}]'.format(obj_type)
+            obj_type2 = '[/O:{}]'.format(obj_type)
+
+            # add marker token
+            subj_idx = sent.find(subj_word)
+            sent = sent[:subj_idx] + subj_type1 + subj_word + subj_type2 + sent[subj_idx+len(subj_word):]
+            obj_idx = sent.find(obj_word)
+            sent = sent[:obj_idx] + obj_type1 + obj_word + obj_type2 + sent[obj_idx+len(obj_word):]
+
+        # Case 05 : typed_entity_marker_punct
         elif self.input_format == 'typed_entity_marker_punct':
             # change format of subj/obj type 
             subj_type = subj_type.replace("_", " ").lower()
@@ -107,19 +128,6 @@ class KLUEDataset(Dataset):
         )
         
         return tokenized_sentence
-    
-    def convert(self, string):
-        dictionary = {'PER':'PERSON',
-                    'ORG':'ORGANIZATION',
-                    'DAT': 'DATE TIME',
-                    'LOC':'LOCATION',
-                    'NOH':'NUMBER',
-                    'POH':'NOUN'
-        }
-        if string in dictionary.keys():
-            return dictionary[string]
-        else:
-            return string
     
     def preprocessing(self, sent):
         patterns = [

@@ -9,7 +9,7 @@ from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-from utils import get_result_name, num_to_label, remove_pad_tokens,  mask_tokenizer_update
+from utils import get_result_name, num_to_label, remove_pad_tokens,  tokenizer_update
 from typing import Optional
 import os
 import wandb
@@ -32,8 +32,7 @@ def train(cfg, result_name :Optional[str] = None):
         cfg["model_name"], model_max_length=cfg["max_len"]
     )
     # marker, masking 옵션에 따른 tokenizer update
-    if cfg['input_format'] == 'entity_mask':
-        tokenizer = mask_tokenizer_update(tokenizer, cfg)
+    tokenizer = tokenizer_update(tokenizer, cfg)
 
     model = eval(cfg['model_class'])(tokenizer, cfg)
     dataloader = KLUEDataLoader(tokenizer, cfg)
@@ -114,7 +113,7 @@ def train(cfg, result_name :Optional[str] = None):
                 ckpt_path="best",
             )  # list of prediction (batchs, batch_size, num_labels)
 
-            id_list = list(range(7765))
+            # id_list = list(range(7765))
             probs_list = []
             label_list = []
 
@@ -125,7 +124,7 @@ def train(cfg, result_name :Optional[str] = None):
             label_list = num_to_label(label_list)
 
             output = pd.DataFrame(
-                {"id": id_list, "pred_label": label_list, "probs": probs_list}
+                {"id": list(range(len(label_list))), "pred_label": label_list, "probs": probs_list}
             )
 
             output.to_csv(
