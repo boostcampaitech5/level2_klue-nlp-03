@@ -16,6 +16,7 @@ class BaseModel(pl.LightningModule):
         self.model = AutoModelForSequenceClassification.from_pretrained(
             cfg["model_name"], num_labels=30
         )
+        self.model_resize()
         self.lossF = eval(cfg["loss"])
 
         if self.lossF == "nn.CrossEntropyLoss":
@@ -34,8 +35,15 @@ class BaseModel(pl.LightningModule):
             "predict": [],
         }
     
-    #임시
-    def len_tokenizer(self): return len(self.tokenizer)
+    def model_resize(self):
+        before = self.model.config.vocab_size
+        self.model.resize_token_embeddings(len(self.tokenizer))
+        after = self.model.config.vocab_size
+        print(f"Model input format : {self.cfg['input_format']}")
+        if before != after:
+            print(f'Model vocab_size changed : {before} -> {after}')
+        else:
+            print(f"Model vocab size : {after}")
 
     def forward(self, input):
         return self.model(
@@ -107,6 +115,13 @@ class BaseModel(pl.LightningModule):
         self.test_result["predict"].extend(
             torch.argmax(output["logits"], dim=1).tolist()
         )
+    
+    def predict_step(self, batch, batch_idx):
+        output = self.forward(batch)
+        probs = F.softmax(output['logits'],dim=1)
+        preds = torch.argmax(probs, dim=1)
+        return {'preds':preds, 'probs':probs}
+
 
 # test
 class ModelWithBinaryClassification(BaseModel):
@@ -116,6 +131,7 @@ class ModelWithBinaryClassification(BaseModel):
     def __init__(self, tokenizer, cfg: dict):
         super().__init__(tokenizer, cfg)
         self.model = AutoModel.from_pretrained(cfg["model_name"])
+        self.model_resize()
         self.lossBCE = torch.nn.BCEWithLogitsLoss()
         self.lossCE = eval("torch.nn." + cfg["loss"])()
         self.hidden_size = self.model.config.hidden_size
@@ -127,8 +143,12 @@ class ModelWithBinaryClassification(BaseModel):
         self.alpha = 0.6
 
 
-    def forward(self, **kwargs):
-        outputs = self.model(**kwargs)
+    def forward(self, input):
+        outputs = self.model(
+            input_ids=input["input_ids"].squeeze(),
+            token_type_ids=input["token_type_ids"].squeeze(),
+            attention_mask=input["attention_mask"].squeeze(),
+        )
         multiclf_token = self.dropout(outputs['pooler_output']) # (N, hdim)
 
         biclf_token = outputs['last_hidden_state'][:,1]
@@ -140,7 +160,7 @@ class ModelWithBinaryClassification(BaseModel):
         multiclf = torch.cat([multiclf_token,biclf_token],dim=1) # (N,hdim*2)
         multiclf = self.multi_classifier(multiclf) # (N, 30)
 
-        return {'multi':multiclf, 'bi':biclf}
+        return {'logits':multiclf, 'bi':biclf}
         
 
     def compute_metrics(self, result):
@@ -159,16 +179,12 @@ class ModelWithBinaryClassification(BaseModel):
              "micro_F1_score": f1, "auprc": auprc,
                  "accuracy": acc}
     def training_step(self, batch, batch_idx):
-        output = self(
-            input_ids=batch["input_ids"].squeeze(),
-            token_type_ids=batch["token_type_ids"].squeeze(),
-            attention_mask=batch["attention_mask"].squeeze(),
-        )
+        output = self(batch)
 
         binary_labels = (batch['labels']!=0).bool().float().unsqueeze(1)
 
         loss_bi = self.lossBCE(output['bi'], binary_labels) * self.alpha
-        loss_mul = self.lossCE(output['multi'], batch['labels']) * (1-self.alpha)
+        loss_mul = self.lossCE(output['logits'], batch['labels']) * (1-self.alpha)
         loss = loss_bi + loss_mul
 
         self.log("train_loss", loss)
@@ -176,18 +192,14 @@ class ModelWithBinaryClassification(BaseModel):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        output = self(
-            input_ids=batch["input_ids"].squeeze(),
-            token_type_ids=batch["token_type_ids"].squeeze(),
-            attention_mask=batch["attention_mask"].squeeze(),
-        )
+        output = self(batch)
         binary_labels = (batch['labels']!=0).bool().float().unsqueeze(1)
 
         loss_bi = self.lossBCE(output['bi'], binary_labels) * self.alpha
-        loss_mul = self.lossCE(output['multi'], batch['labels']) * (1-self.alpha)
+        loss_mul = self.lossCE(output['logits'], batch['labels']) * (1-self.alpha)
         loss = loss_bi + loss_mul
 
-        logits = output['multi'].detach().cpu()
+        logits = output['logits'].detach().cpu()
         labels = batch['labels'].detach().cpu()
 
         self.log("val_loss", loss, sync_dist=True, on_epoch=True)
@@ -208,11 +220,7 @@ class ModelWithBinaryClassification(BaseModel):
         self.val_epoch_result["labels"] = torch.tensor([], dtype=torch.int64)
 
     def test_step(self, batch, batch_idx):
-        output = self(
-            input_ids=batch["input_ids"].squeeze(),
-            token_type_ids=batch["token_type_ids"].squeeze(),
-            attention_mask=batch["attention_mask"].squeeze(),
-        )
+        output = self(batch)
 
         # 원래 문장, 원래 target, 모델의 prediction을 저장
         self.test_result["sentence"].extend(batch["sentence"])
@@ -221,5 +229,68 @@ class ModelWithBinaryClassification(BaseModel):
         )
         self.test_result["target"].extend(batch["labels"].tolist())
         self.test_result["predict"].extend(
-            torch.argmax(output['multi'], dim=1).tolist()
+            torch.argmax(output['logits'], dim=1).tolist()
         )
+
+class ModelWithEntityMarker(BaseModel):
+    ''' ModelWithEntityMarker
+    Classifier with CLS tokens, entity marker(@, #) tokens
+    '''
+    def __init__(self, tokenizer, cfg: dict):
+        super().__init__(tokenizer, cfg)
+        self.model = AutoModel.from_pretrained(cfg["model_name"])
+        self.model_resize()
+        self.lossF = eval("torch.nn." + cfg["loss"])()
+        self.hidden_size = self.model.config.hidden_size
+        self.classifier = torch.nn.Linear(self.hidden_size, 30)
+        self.dropout = torch.nn.Dropout(0.1)
+        self.activation = torch.nn.Tanh()
+        self.markers = '@#'
+        self.marker_ids = self.tokenizer(self.markers, add_special_tokens=False)['input_ids']
+
+        if cfg['input_format'] not in ('entity_marker_punct', 'typed_entity_marker_punct'):
+            raise Exception("Input format should be [`entity_marker_punct`, `typed_entity_marker_punct`]")
+
+
+    def forward(self, input):
+        outputs = self.model(
+            input_ids=input["input_ids"].squeeze(),
+            token_type_ids=input["token_type_ids"].squeeze(),
+            attention_mask=input["attention_mask"].squeeze(),
+        )
+
+        pooler_output = self.mean_pooling(input['input_ids'], outputs['last_hidden_state'])
+        pooler_output = self.activation(pooler_output)
+        pooler_output = self.dropout(pooler_output)
+        pooler_output = self.classifier(pooler_output)
+             
+        return {'logits':pooler_output}
+    
+    def mean_pooling(self, batch_input_ids, last_hidden_state):
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        pooler_output = torch.Tensor().to(device)
+        for i, input_ids in enumerate(batch_input_ids):
+
+            marker1, marker2 = self.get_marker_index(input_ids.squeeze())
+ 
+            hidden_states = torch.cat([
+                last_hidden_state[i,0].view(-1, self.hidden_size),
+                last_hidden_state[i, marker1[0]:marker1[1] + 1].view(-1, self.hidden_size),
+                last_hidden_state[i, marker2[0]:marker2[1] + 1].view(-1, self.hidden_size)
+            ], dim=0).unsqueeze(0)
+            hidden_states = torch.mean(hidden_states, dim=1)
+
+            pooler_output = torch.cat([pooler_output, hidden_states],dim=0)
+            # same gpu
+        return pooler_output
+
+    def get_marker_index(self, input_ids):
+        marker1, marker2 = list(), list()
+        for i, ids in enumerate(input_ids):
+            if ids == self.marker_ids[0]:
+                marker1.append(i)
+            if ids == self.marker_ids[1]:
+                marker2.append(i)
+            if len(marker1)==2 and len(marker2)==2:
+                break
+        return (marker1, marker2)

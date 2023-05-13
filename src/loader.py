@@ -4,6 +4,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from utils import label_to_num, load_data, preprocessing_dataset
+import re 
 
 
 class KLUEDataset(Dataset):
@@ -14,7 +15,7 @@ class KLUEDataset(Dataset):
         self.model_class = model_class
         self.input_format = input_format
 
-        if self.input_format not in ('default', 'entity_mask', 'entity_marker_punct', 'typed_entity_marker_punct'):
+        if self.input_format not in ('default', 'entity_mask','entity_marker','entity_marker_punct','typed_entity_marker', 'typed_entity_marker_punct'):
             raise Exception("Invalid input format!")
 
     def __len__(self):
@@ -55,37 +56,64 @@ class KLUEDataset(Dataset):
             )
             return tokenized_sentence
         
-        # Case 01 ~ 03
+        # Case 01 ~ 05
         subj_type = item["subject_entity"]["type"]
         obj_type = item["object_entity"]["type"]
 
         # tokienize item with masking or marking
         sent = item['sentence']
+
+        # preprocessing
+        sent = self.preprocessing(sent)
+
         subj_word = item["subject_entity"]["word"]
         obj_word = item["object_entity"]["word"]
 
         # Case 01 : entity_mask
         if self.input_format == 'entity_mask':
+            subj_type = f'[SUBJ-{subj_type}]'
+            obj_type = f'[OBJ-{obj_type}]'
             sent = sent.replace(subj_word, subj_type)
             sent = sent.replace(obj_word, obj_type)
 
-        # Case 02 : entity_marker_punct
+         # Case 02 : entity_marker
+        elif self.input_format == 'entity_marker':
+            subj_idx = sent.find(subj_word)
+            sent = sent[:subj_idx] + '[E1]' + subj_word + '[/E1]' + sent[subj_idx+len(subj_word):]
+            obj_idx = sent.find(obj_word)
+            sent = sent[:obj_idx] + '[E2]' + obj_word + '[/E2]' + sent[obj_idx+len(obj_word):]
+
+        # Case 03 : entity_marker_punct
         elif self.input_format == 'entity_marker_punct':
             subj_idx = sent.find(subj_word)
             sent = sent[:subj_idx] + '@' + subj_word + '@' + sent[subj_idx+len(subj_word):]
             obj_idx = sent.find(obj_word)
             sent = sent[:obj_idx] + '#' + obj_word + '#' + sent[obj_idx+len(obj_word):]
 
-        # Case 03 : typed_entity_marker_punct
-        elif self.input_format == 'typed_entity_marker_punct':
+        # Case 04 : typed_entity_marker
+        elif self.input_format == 'typed_entity_marker':
             # change format of subj/obj type 
-            subj_type = self.tokenizer.tokenize(subj_type.replace("_", " ").lower()) 
-            obj_type = self.tokenizer.tokenize(obj_type.replace("_", " ").lower())
+            subj_type1 = '[S:{}]'.format(subj_type)
+            subj_type2 = '[/S:{}]'.format(subj_type)
+            obj_type1 = '[O:{}]'.format(obj_type)
+            obj_type2 = '[/O:{}]'.format(obj_type)
+
             # add marker token
             subj_idx = sent.find(subj_word)
-            sent = sent[:subj_idx] + '@ * ' + subj_word + '* @' + sent[subj_idx+len(subj_word):]
+            sent = sent[:subj_idx] + subj_type1 + subj_word + subj_type2 + sent[subj_idx+len(subj_word):]
             obj_idx = sent.find(obj_word)
-            sent = sent[:obj_idx] + '# ^ ' + obj_word + ' ^ #' + sent[obj_idx+len(obj_word):]
+            sent = sent[:obj_idx] + obj_type1 + obj_word + obj_type2 + sent[obj_idx+len(obj_word):]
+
+        # Case 05 : typed_entity_marker_punct
+        elif self.input_format == 'typed_entity_marker_punct':
+            # change format of subj/obj type 
+            subj_type = subj_type.replace("_", " ").lower()
+            obj_type = obj_type.replace("_", " ").lower()
+            # add marker token
+            subj_idx = sent.find(subj_word)
+            sent = sent[:subj_idx] + '@ * ' + subj_type + ' * ' + subj_word + ' @' + sent[subj_idx+len(subj_word):]
+            obj_idx = sent.find(obj_word)
+            sent = sent[:obj_idx] + '# ^ ' + obj_type + ' ^ ' + obj_word + ' #' + sent[obj_idx+len(obj_word):]
         
         # ModelWithBinaryClassification
         if self.model_class == 'ModelWithBinaryClassification':
@@ -100,6 +128,16 @@ class KLUEDataset(Dataset):
         )
         
         return tokenized_sentence
+    
+    def preprocessing(self, sent):
+        patterns = [
+                (r'[#@^*]', ''),
+                (r'\s+', ' ') # 이중 공백 제거
+            ]
+
+        for old, new in patterns:
+            sent = re.sub(old, new, sent)
+        return sent.strip()
 
 
 class KLUEDataLoader(pl.LightningDataModule):
