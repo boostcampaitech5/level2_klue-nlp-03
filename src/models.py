@@ -15,7 +15,7 @@ class BaseModel(pl.LightningModule):
             cfg["model_name"], num_labels=30
         )
         self.model_resize()
-        self.lossF = eval("torch.nn." + cfg["loss"])()
+        self.lossF = eval("torch.nn." + cfg["loss"])(label_smoothing=self.cfg['label_smoothing'])
 
         self.val_epoch_result = {
             "logits": torch.tensor([], dtype=torch.float32),
@@ -57,13 +57,14 @@ class BaseModel(pl.LightningModule):
     def lr_lambda(self, current_epoch):
         """custom lr_scheduler: linear하게 상승 후 하강"""
         growth_ratio = 0.3  # 증가하는 구간 (30%), 하강하는 구간(70%)
+        epsilon = 0.05
         max_epochs = self.cfg['epoch']
         if current_epoch <= int(max_epochs * growth_ratio):
             # 증가 구간
-            return current_epoch / (max_epochs * growth_ratio)
+            return current_epoch / (max_epochs * growth_ratio) + epsilon
         else:
             # 감소 구간
-            return (max_epochs - current_epoch) / (max_epochs * (1 - growth_ratio))
+            return (max_epochs - current_epoch) / (max_epochs * (1 - growth_ratio)) + epsilon
 
     def compute_metrics(self, result):
         """loss와 score를 계산하는 함수"""
@@ -137,7 +138,7 @@ class ModelWithEntityMarker(BaseModel):
         self.model = AutoModel.from_pretrained(cfg["model_name"])
         self.model_resize()
         # self.model = model_freeze(self.model)
-        self.lossF = eval("torch.nn." + cfg["loss"])()
+        self.lossF = eval("torch.nn." + cfg["loss"])(label_smoothing=self.cfg['label_smoothing'])
         self.hidden_size = self.model.config.hidden_size
         self.classifier = torch.nn.Linear(self.hidden_size * self.pooling_hdim[self.pooling_type], num_labels)
         self.dropout = torch.nn.Dropout(0.1)

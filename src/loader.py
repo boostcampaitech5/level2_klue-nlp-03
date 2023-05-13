@@ -171,6 +171,7 @@ class KLUEDataLoader(pl.LightningDataModule):
             self.train_dataset,
             batch_size=self.cfg["batch_size"],
             num_workers=self.cfg["num_workers"],
+            shuffle=True
         )
 
     def val_dataloader(self):
