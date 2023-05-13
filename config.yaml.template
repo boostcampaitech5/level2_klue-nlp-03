@@ -5,7 +5,7 @@ project_name: KLUE2
 
 model_name: klue/roberta-base
 lr: 3e-5
-lr_scheduler: StepLR(optimizer, step_size=2, gamma=0.85)
+lr_scheduler: LambdaLR(optimizer, lr_lambda=lr_lambda)
 # CosineAnnealingLR(optimizer, T_max=5, eta_min=8e-6)
 # StepLR(optimizer, step_size=2, gamma=0.85)
 batch_size: 64
