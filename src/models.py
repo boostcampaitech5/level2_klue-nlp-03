@@ -130,16 +130,16 @@ class ModelWithEntityMarker(BaseModel):
     ''' ModelWithEntityMarker
     Classifier with CLS tokens, entity marker(@, #) tokens
     '''
-    def __init__(self, tokenizer, cfg: dict):
+    def __init__(self, tokenizer, cfg: dict, num_labels=30):
         super().__init__(tokenizer, cfg)
         self.pooling_type = cfg['pooling_type'] # "mean", "triple", "double"
-        pooling_hdim = {"mean":1, "double":2,"triple":3}
+        self.pooling_hdim = {"mean":1, "double":2,"triple":3}
         self.model = AutoModel.from_pretrained(cfg["model_name"])
         self.model_resize()
         # self.model = model_freeze(self.model)
         self.lossF = eval("torch.nn." + cfg["loss"])()
         self.hidden_size = self.model.config.hidden_size
-        self.classifier = torch.nn.Linear(self.hidden_size * pooling_hdim[self.pooling_type], 30)
+        self.classifier = torch.nn.Linear(self.hidden_size * self.pooling_hdim[self.pooling_type], num_labels)
         self.dropout = torch.nn.Dropout(0.1)
         self.activation = torch.nn.Tanh()
         if cfg['input_format'] in ['entity_marker_punct', 'typed_entity_marker_punct']:
@@ -224,23 +224,12 @@ class BinaryClassifier(ModelWithEntityMarker):
     ''' BinaryClassifier
     which picks up 'no-relation' or not
     '''
-    def __init__(self, tokenizer, cfg: dict):
-        super().__init__(tokenizer, cfg)
-        self.model = AutoModelForSequenceClassification.from_pretrained(
-            cfg["model_name"], num_labels=1)
-        self.model_resize()
+    def __init__(self, tokenizer, cfg: dict, num_labels=1):
+        super().__init__(tokenizer, cfg, num_labels=1)
         self.lossF = torch.nn.BCELoss()
-        self.classifier = torch.nn.Linear(self.hidden_size, 1)
         self.sigmoid = torch.nn.Sigmoid()
+        self.classifier = torch.nn.Linear(self.hidden_size * self.pooling_hdim[self.pooling_type], num_labels)
 
-    def forward(self, input):
-        outputs = self.model(
-            input_ids=input["input_ids"].squeeze(),
-            token_type_ids=input["token_type_ids"].squeeze(),
-            attention_mask=input["attention_mask"].squeeze(),
-        )
-        return {'logits':self.sigmoid(outputs['logits'])}
-    
     def compute_metrics(self, result):
         """loss와 score를 계산하는 함수"""
         logits = result["logits"]
@@ -254,8 +243,9 @@ class BinaryClassifier(ModelWithEntityMarker):
 
     def training_step(self, batch, batch_idx):
         output = self.forward(batch)
+        logits = self.sigmoid(output['logits'])
         labels = (batch['labels']!=0).bool().float().unsqueeze(1)
-        loss = self.lossF(output["logits"], labels)
+        loss = self.lossF(logits, labels)
 
         self.log("train_loss", loss)
 
@@ -263,7 +253,7 @@ class BinaryClassifier(ModelWithEntityMarker):
 
     def validation_step(self, batch, batch_idx):
         output = self.forward(batch)
-        logits = output["logits"].detach().cpu() 
+        logits = self.sigmoid(output["logits"]).detach().cpu() 
         labels = (batch['labels']!=0).bool().float().unsqueeze(1)
         labels = labels.detach().cpu() 
         self.val_epoch_result["logits"] = torch.cat(
@@ -282,6 +272,7 @@ class BinaryClassifier(ModelWithEntityMarker):
 
     def test_step(self, batch, batch_idx):
         output = self.forward(batch)
+        logits = self.sigmoid(output['logits'])
         labels = (batch['labels']!=0).bool().float().squeeze()
 
         # 원래 문장, 원래 target, 모델의 prediction을 저장
@@ -291,12 +282,12 @@ class BinaryClassifier(ModelWithEntityMarker):
         )
         self.test_result["target"].extend(labels.tolist())
         self.test_result["predict"].extend(
-            torch.where(output["logits"]>0.5, 1, 0).tolist()
+            torch.where(logits>0.5, 1, 0).tolist()
         )
     
     def predict_step(self, batch, batch_idx):
         output = self.forward(batch)
-        logits = output['logits']
+        logits = self.sigmoid(output['logits'])
         other_probs = ((1-output['logits'])/29).expand(-1,29)
         probs = torch.cat([logits, other_probs], dim=1)
         assert probs.size(-1) == 30, 'lael size should be 30'
