@@ -21,6 +21,7 @@ patience: 10
 
 model_class: BaseModel # BaseModel, ModelWithBinaryClassification, ModelWithEntityMarker
 input_format: entity_mask # default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
+pooling_type: mean # mean, double, triple
 
 earlystopping_monitor: val_micro_F1_score
 best_model_monitor: val_micro_F1_score

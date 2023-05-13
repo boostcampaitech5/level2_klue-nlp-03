@@ -47,6 +47,7 @@ parameters:
   input_format:
     values: [default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct] 
     # default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
+  pooling_type: mean # mean, double, triple
 
   earlystopping_monitor:
     value: val_micro_F1_score

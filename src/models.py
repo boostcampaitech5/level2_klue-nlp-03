@@ -53,6 +53,17 @@ class BaseModel(pl.LightningModule):
         else:
             scheduler = eval("torch.optim.lr_scheduler." + self.cfg["lr_scheduler"])
             return [optimizer], [scheduler]
+        
+    def lr_lambda(self, current_epoch):
+        """custom lr_scheduler: linear하게 상승 후 하강"""
+        growth_ratio = 0.3  # 증가하는 구간 (30%), 하강하는 구간(70%)
+        max_epochs = self.cfg['epoch']
+        if current_epoch <= int(max_epochs * growth_ratio):
+            # 증가 구간
+            return current_epoch / (max_epochs * growth_ratio)
+        else:
+            # 감소 구간
+            return (max_epochs - current_epoch) / (max_epochs * (1 - growth_ratio))
 
     def compute_metrics(self, result):
         """loss와 score를 계산하는 함수"""
@@ -121,12 +132,14 @@ class ModelWithEntityMarker(BaseModel):
     '''
     def __init__(self, tokenizer, cfg: dict):
         super().__init__(tokenizer, cfg)
+        self.pooling_type = cfg['pooling_type'] # "mean", "triple", "double"
+        pooling_hdim = {"mean":1, "double":2,"triple":3}
         self.model = AutoModel.from_pretrained(cfg["model_name"])
         self.model_resize()
         # self.model = model_freeze(self.model)
         self.lossF = eval("torch.nn." + cfg["loss"])()
         self.hidden_size = self.model.config.hidden_size
-        self.classifier = torch.nn.Linear(self.hidden_size, 30)
+        self.classifier = torch.nn.Linear(self.hidden_size * pooling_hdim[self.pooling_type], 30)
         self.dropout = torch.nn.Dropout(0.1)
         self.activation = torch.nn.Tanh()
         if cfg['input_format'] in ['entity_marker_punct', 'typed_entity_marker_punct']:
@@ -144,29 +157,52 @@ class ModelWithEntityMarker(BaseModel):
             token_type_ids=input["token_type_ids"].squeeze(),
             attention_mask=input["attention_mask"].squeeze(),
         )
-
-        pooler_output = self.mean_pooling(input['input_ids'], outputs['last_hidden_state'])
+        if self.pooling_type == 'mean':
+            pooler_output = self.pooling(input['input_ids'], outputs['last_hidden_state'])
+        else:
+            pooler_output = torch.cat([
+                outputs['pooler_output'], self.pooling(input['input_ids'], outputs['last_hidden_state'])
+            ], dim=1)
         pooler_output = self.activation(pooler_output)
         pooler_output = self.dropout(pooler_output)
         pooler_output = self.classifier(pooler_output)
              
         return {'logits':pooler_output}
     
-    def mean_pooling(self, batch_input_ids, last_hidden_state):
+    def pooling(self, batch_input_ids, last_hidden_state):
         pooler_output = torch.Tensor().to(self.device)
 
         for i, input_ids in enumerate(batch_input_ids):
             
             marker1, marker2 = self.get_marker_index(input_ids.squeeze())
             try:
-                hidden_states = torch.cat([
-                    last_hidden_state[i,0].view(-1, self.hidden_size),
-                    last_hidden_state[i, marker1[0]:marker1[1] + 1].view(-1, self.hidden_size),
-                    last_hidden_state[i, marker2[0]:marker2[1] + 1].view(-1, self.hidden_size)
-                ], dim=0).unsqueeze(0)
-                hidden_states = torch.mean(hidden_states, dim=1)
+                if self.pooling_type == 'mean': # (1, hdim)
+                    hidden_states = torch.cat([
+                        last_hidden_state[i,0].view(-1, self.hidden_size),
+                        last_hidden_state[i, marker1[0]:marker1[1] + 1].view(-1, self.hidden_size),
+                        last_hidden_state[i, marker2[0]:marker2[1] + 1].view(-1, self.hidden_size)
+                    ], dim=0).unsqueeze(0)
+                    hidden_states = torch.mean(hidden_states, dim=1)
+                elif self.pooing_type == 'triple': # (1, hdim * 2)
+                    hidden_states = torch.cat([
+                        torch.mean(last_hidden_state[i, marker1[0]:marker1[1] + 1].view(1, -1, self.hidden_size), dim=1),
+                        torch.mean(last_hidden_state[i, marker2[0]:marker2[1] + 1].view(1, -1, self.hidden_size), dim=1)
+                    ], dim=1)  
+                elif self.pooling_type == 'double': # (1, hdim)
+                    hidden_states = torch.cat([
+                        last_hidden_state[i, marker1[0]:marker1[1] + 1].view(-1, self.hidden_size),
+                        last_hidden_state[i, marker2[0]:marker2[1] + 1].view(-1, self.hidden_size)
+                    ], dim=0).unsqueeze(0)
+                    hidden_states = torch.mean(hidden_states, dim=1)
             except:
-                hidden_states = last_hidden_state[i,0].unsqueeze(0)
+                if self.pooling_type != 'triple':  # (1, hdim)
+                    hidden_states = last_hidden_state[i,0].unsqueeze(0) 
+                else :  # (2, hdim)
+                    hidden_states = torch.cat([
+                    last_hidden_state[i,0].unsqueeze(0),
+                     last_hidden_state[i, marker1[0]].unsqueeze(0)
+                ], dim=1) 
+                    
             pooler_output = torch.cat([pooler_output, hidden_states],dim=0)
 
         return pooler_output
