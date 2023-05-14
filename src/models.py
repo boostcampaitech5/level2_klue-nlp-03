@@ -186,7 +186,7 @@ class ModelWithEntityMarker(BaseModel):
                 elif self.pooing_type == 'entity_start_end_token': # (1, hdim * 2)
                     hidden_states = torch.cat([
                         (last_hidden_state[i, subj_idx[0]] + last_hidden_state[i, subj_idx[1]]).view(-1, self.hidden_size) / 2, 
-                        (last_hidden_state[i, obj_idx[1]] + last_hidden_state[i, obj_idx[1]]).view(-1, self.hidden_size) / 2, 
+                        (last_hidden_state[i, obj_idx[0]] + last_hidden_state[i, obj_idx[1]]).view(-1, self.hidden_size) / 2, 
                     ], dim=1)  
                 elif self.pooling_type == 'entity_tokens': # (1, hdim * 2)
                     hidden_states = torch.cat([
