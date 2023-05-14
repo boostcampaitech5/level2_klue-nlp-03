@@ -32,9 +32,9 @@ class BaseModel(pl.LightningModule):
 
     def forward(self, input):
         return self.model(
-            input_ids=input["input_ids"].squeeze(),
-            token_type_ids=input["token_type_ids"].squeeze(),
-            attention_mask=input["attention_mask"].squeeze(),
+            input_ids=input["input_ids"].reshape(-1,self.cfg['max_len']),
+            token_type_ids=input["token_type_ids"].reshape(-1,self.cfg['max_len']),
+            attention_mask=input["attention_mask"].reshape(-1,self.cfg['max_len']),
         )
 
     def configure_optimizers(self):

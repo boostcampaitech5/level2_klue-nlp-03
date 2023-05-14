@@ -1,31 +1,35 @@
 # 이 파일을 config.yaml로 이름을 변경하고 사용하세요.
-seed: 3
-num_workers: 4
 project_name: KLUE
 
+seed: 3
+num_workers: 4
+
 model_name: klue/roberta-small
-lr: 1e-5
+lr: 2e-5
 lr_scheduler: StepLR(optimizer, step_size=2, gamma=0.85)
 # CosineAnnealingLR(optimizer, T_max=5, eta_min=8e-6)
 # StepLR(optimizer, step_size=2, gamma=0.85)
-batch_size: 32
-val_batch_size: 32
-test_batch_size: 32
-predict_batch_size: 32
+batch_size: 128
+val_batch_size: 128
+test_batch_size: 128
+predict_batch_size: 128
 max_len: 200
-val_size: 0.1
-epoch: 2
+val_size: 0.2
+epoch: 10
 loss: CrossEntropyLoss
 optim: AdamW
-patience: 5
+patience: 10
 
 model_class: BaseModel # BaseModel, ModelWithBinaryClassification
-input_format: default # select : default, entity_mask, entity_marker_punct, typed_entity_marker_punct
+input_format: typed_entity_marker_punct # select : default, entity_mask, entity_marker_punct, typed_entity_marker_punct
 
 earlystopping_monitor: val_micro_F1_score
 best_model_monitor: val_micro_F1_score
 
 min_epoch_to_log: 2
+
+EDA: true
+num_aug: 1500
 train_dir: ./data/train_data.csv
 test_dir: ./data/test_data.csv
 result_dir: ./results/
