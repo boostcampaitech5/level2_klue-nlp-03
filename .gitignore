@@ -23,3 +23,6 @@ __pycache__/
 *.yml
 playground.ipynb
 .ipynb_checkpoints/
+연습장.ipynb
+models_copy.py
+eda/result_eda copy.ipynb
