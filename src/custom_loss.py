@@ -6,11 +6,11 @@ import torch.nn.functional as F
 class FocalLoss(nn.Module):
     def __init__(self, alpha, gamma):
         super().__init__()
-        self.alpha_list = torch.tensor(alpha)
+        self.alpha = alpha
         self.gamma = gamma
 
     def forward(self, inputs, targets):
-        alpha = self.alpha_list.to(inputs.device)[targets]
+        alpha = self.alpha[targets]
         ce_loss = F.cross_entropy(inputs, targets, reduction="none")
         pt = torch.exp(-ce_loss)
         focal_loss = alpha * (1 - pt) ** self.gamma * ce_loss

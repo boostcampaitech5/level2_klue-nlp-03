@@ -1,5 +1,5 @@
 import torch
-import torch.nn
+import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 import custom_loss
@@ -18,11 +18,13 @@ class BaseModel(pl.LightningModule):
         )
         self.model_resize()
         self.lossF = eval(cfg["loss"])
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        class_weight = torch.tensor(cfg["class_weight"], dtype=torch.float32).to(device)
 
-        if self.lossF == "nn.CrossEntropyLoss":
-            self.lossF = self.lossF(weight=cfg["class_weight"])
-        elif self.lossF == "custom_loss.FocalLoss":
-            self.lossF = self.lossF(alpha=cfg["class_weight"], gamma=cfg["FocalLoss_gamma"])
+        if cfg["loss"] == "nn.CrossEntropyLoss":
+            self.lossF = self.lossF(weight=class_weight)
+        elif cfg["loss"] == "custom_loss.FocalLoss":
+            self.lossF = self.lossF(alpha=class_weight, gamma=cfg["FocalLoss_gamma"])
 
         self.val_epoch_result = {
             "logits": torch.tensor([], dtype=torch.float32),
@@ -64,16 +66,16 @@ class BaseModel(pl.LightningModule):
     def compute_metrics(self, result):
         """loss와 score를 계산하는 함수"""
         logits = result["logits"]
+        labels = result["labels"]
         probs = F.softmax(logits, dim=1)
         preds = torch.argmax(probs, dim=1)
-        labels = result["labels"]
-        loss = self.lossF(logits, labels)
+        
         # calculate accuracy using sklearn's function
         f1 = klue_re_micro_f1(preds, labels)
         auprc = klue_re_auprc(probs, labels)
         acc = accuracy_score(labels, preds)  # 리더보드 평가에는 포함되지 않습니다.
 
-        return {"loss": loss, "micro_F1_score": f1, "auprc": auprc, "accuracy": acc}
+        return {"micro_F1_score": f1, "auprc": auprc, "accuracy": acc}
 
     def training_step(self, batch, batch_idx):
         output = self.forward(batch)
@@ -85,8 +87,10 @@ class BaseModel(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         output = self.forward(batch)
+        loss = self.lossF(output["logits"], batch["labels"])
         logits = output["logits"].detach().cpu()  # pt tensor (batch_size, num_labels)
         labels = batch["labels"].detach().cpu()  # pt tensor (batch_size)
+        self.log("val_loss", loss, on_epoch=True)
         self.val_epoch_result["logits"] = torch.cat(
             (self.val_epoch_result["logits"], logits), dim=0
         )
@@ -96,7 +100,6 @@ class BaseModel(pl.LightningModule):
 
     def on_validation_epoch_end(self):
         metrics = self.compute_metrics(self.val_epoch_result)
-        self.log("val_loss", metrics["loss"], sync_dist=True)
         self.log("val_micro_F1_score", metrics["micro_F1_score"], sync_dist=True)
         self.log("val_auprc", metrics["auprc"], sync_dist=True)
         self.log("val_accuracy", metrics["accuracy"], sync_dist=True)
