@@ -17,7 +17,6 @@ def label_to_num(label: List) -> List:
     """문자열 class label을 숫자로 변환합니다."""
     if label[0] == 100:  # test_data를 받은 경우
         return label
-
     num_label = []
     with open("./src/dict_label_to_num.pkl", "rb") as f:
         dict_label_to_num = pickle.load(f)
@@ -29,6 +28,11 @@ def label_to_num(label: List) -> List:
 
 def num_to_label(label: List[int]) -> List[str]:
     """숫자로 되어 있던 class를 원본 문자열 라벨로 변환 합니다."""
+    if len(set(np.array(label, dtype=np.int64).reshape(-1))) <= 2: # binary-label의 경우 no-relation or others로 분류
+        label = np.array(label, dtype=np.int64).reshape(-1)
+        label = np.where(label<0.5, 'no_relation', 'others')
+        return label.tolist()
+    
     origin_label = []
     with open("./src/dict_num_to_label.pkl", "rb") as f:
         dict_num_to_label = pickle.load(f)
@@ -135,19 +139,43 @@ def remove_pad_tokens(sentences: List[str], pad_token: str) -> List[str]:
     ret = [sentence.replace(" " + pad_token, "") for sentence in sentences]
     return ret
 
-def mask_tokenizer_update(tokenizer, cfg):
+def tokenizer_update(tokenizer, cfg):
     """entity masking을 위해 tokenzier update하는 함수
     """
+    input_format = cfg['input_format']
+    if input_format in ['default','entity_marker_punct, typed_entity_marker_punct']:
+        return tokenizer
+    
     df = pd.read_csv(cfg['train_dir'])
     new_tokens = []
-    for sub, obj in zip(df["subject_entity"], df["object_entity"]):
-        sub = eval(sub)
-        obj = eval(obj)
-        subj_type = '[SUBJ-{}]'.format(sub['type'])
-        obj_type = '[OBJ-{}]'.format(obj['type'])
-        for token in (subj_type, obj_type):
-            if token not in new_tokens:
-                new_tokens.append(token)
-                tokenizer.add_tokens([token])
+    types = []
+    if input_format == 'entity_marker':
+        new_tokens = ['[E1]','[/E1]','[E2]','[/E2]']
+    else:
+        for sub, obj in zip(df["subject_entity"], df["object_entity"]):
+            sub = eval(sub)
+            obj = eval(obj)
+            if input_format == 'entity_mask':
+                subj_type = '[SUBJ-{}]'.format(sub['type'])
+                obj_type = '[OBJ-{}]'.format(obj['type'])
+                types = [subj_type, obj_type]
+            elif input_format == 'typed_entity_marker':
+                subj_type1 = '[S:{}]'.format(sub['type'])
+                subj_type2 = '[/S:{}]'.format(sub['type'])
+                obj_type1 = '[O:{}]'.format(obj['type'])
+                obj_type2 = '[/O:{}]'.format(obj['type'])
+                types = [subj_type1, subj_type2, obj_type1, obj_type2]
+            for token in types:
+                if token not in new_tokens:
+                    new_tokens.append(token)
 
+    tokenizer.add_tokens(new_tokens, special_tokens=True)
     return tokenizer
+
+def model_freeze(model, keys_to_remain:list = []):
+    for name, param in model.named_parameters():
+        param.requires_grad = False
+        for key in keys_to_remain:
+            if key in name:
+                param.requires_grad =True
+    return model

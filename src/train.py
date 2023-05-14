@@ -4,12 +4,12 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 
-from models import BaseModel, ModelWithBinaryClassification
+from models import BaseModel, BinaryClassifier, ModelWithEntityMarker
 from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-from utils import get_result_name, num_to_label, remove_pad_tokens,  mask_tokenizer_update
+from utils import get_result_name, num_to_label, remove_pad_tokens,  tokenizer_update
 from typing import Optional
 import os
 import wandb
@@ -19,6 +19,7 @@ from pprint import pprint
 # warning ignore(임시)
 import warnings
 warnings.filterwarnings(action='ignore')
+os.environ['TOKENIZERS_PARALLELISM'] = '1'
 
 def train(cfg, result_name :Optional[str] = None):
     # set random seed
@@ -32,8 +33,7 @@ def train(cfg, result_name :Optional[str] = None):
         cfg["model_name"], model_max_length=cfg["max_len"]
     )
     # marker, masking 옵션에 따른 tokenizer update
-    if cfg['input_format'] == 'entity_mask':
-        tokenizer = mask_tokenizer_update(tokenizer, cfg)
+    tokenizer = tokenizer_update(tokenizer, cfg)
 
     model = eval(cfg['model_class'])(tokenizer, cfg)
     dataloader = KLUEDataLoader(tokenizer, cfg)
@@ -92,7 +92,7 @@ def train(cfg, result_name :Optional[str] = None):
         print("Exception during fitting:", e)
     finally:
         print("current epoch:", trainer.current_epoch)
-        if trainer.current_epoch > cfg["min_epoch_to_log"]:
+        if trainer.current_epoch >= cfg["min_epoch_to_log"]:
             # test stage
             trainer.test(model=model, datamodule=dataloader, ckpt_path="best")
             # validation data로 모델의 prediction 결과를 result 폴더에 csv파일로 저장합니다.
@@ -114,7 +114,7 @@ def train(cfg, result_name :Optional[str] = None):
                 ckpt_path="best",
             )  # list of prediction (batchs, batch_size, num_labels)
 
-            id_list = list(range(7765))
+            # id_list = list(range(7765))
             probs_list = []
             label_list = []
 
@@ -125,7 +125,7 @@ def train(cfg, result_name :Optional[str] = None):
             label_list = num_to_label(label_list)
 
             output = pd.DataFrame(
-                {"id": id_list, "pred_label": label_list, "probs": probs_list}
+                {"id": list(range(len(label_list))), "pred_label": label_list, "probs": probs_list}
             )
 
             output.to_csv(
