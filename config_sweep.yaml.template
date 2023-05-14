@@ -13,14 +13,14 @@ parameters:
   num_workers: 
     value: 4
   project_name:
-    value: KLUE2
+    value: KLUE
   
   model_name: 
     values: [klue/roberta-base] # klue/bert-base, klue/bert-large, klue/roberta-base, klue/roberta-large
   lr: 
     values: [3e-5] # [1e-5, 2e-5, 3e-5, 4e-5, 5e-5]
   lr_scheduler:
-    value: StepLR(optimizer, step_size=2, gamma=0.85)
+    value: LambdaLR(optimizer, lr_lambda=self.lr_lambda)
 
   batch_size: 
     value: 64
@@ -43,10 +43,14 @@ parameters:
   patience:
     value: 10
   model_class:
-    values: [BaseModel] # BaseModel, ModelWithBinaryClassification, ModelWithEntityMarker
+    values: [ModelWithEntityMarker] # BaseModel, ModelWithEntityMarker, BinaryClassifier
   input_format:
-    values: [default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct] 
-    # default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
+    values: [typed_entity_marker_punct] # default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
+  pooling_type:
+    values: [entity_start_token] # entity_start_token, entity_start_end_token, entity_tokens
+
+  label_smoothing:
+    values: [0.0] # 0.0 (default) , 0.1
 
   earlystopping_monitor:
     value: val_micro_F1_score
