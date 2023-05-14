@@ -8,6 +8,10 @@ metric:
 # 1. 고정된 hyperparamer는 [value: 단일값] 설정합니다.
 # 2. sweep하고 싶은 hyperparameter는 [values: 리스트] 로 설정합니다.
 parameters:
+  entity_name:
+    value: ggul_tiger
+  project_name:
+    value: KLUE2
   seed:
     values: [3] # e.g. [1,2,3,4,5]
   num_workers: 
@@ -32,18 +36,21 @@ parameters:
   val_size: 
     value: 0.2
   epoch: 
+    value: 5
+  patience:
     value: 10
+
   loss: 
     value: CrossEntropyLoss
   optim: 
     value: AdamW
-  patience:
-    value: 10
 
-  model_class: 
-    value: BaseModel # BaseModel, ModelWithBinaryClassification
-  input_format: 
-    value: typed_entity_marker_punct # select : default, entity_mask, entity_marker_punct, typed_entity_marker_punct
+  model_class:
+    # BaseModel, ModelWithBinaryClassification
+    value: BaseModel 
+  input_format:
+    # select : default, entity_mask, entity_marker_punct, typed_entity_marker_punct
+    value: default 
 
   earlystopping_monitor:
     value: val_micro_F1_score
@@ -52,13 +59,20 @@ parameters:
   min_epoch_to_log:
     value: 2
 
-  EDA:
-    value: true
-  num_aug:
-    values: [1500]
+
+  # EDA
+  EDA: 
+    value: null # [null, 500, 1000]
+  # back translation 안하면 null
+  backtrans_path: 
+    value: ./data/backtranslated_ja.csv # 안하면 null
+  aug_labels:
+    values: [29,27,25,19,12]
+
   train_dir: 
     value: ./data/train_data.csv
   test_dir: 
     value: ./data/test_data.csv
   result_dir: 
     value: ./results/
+

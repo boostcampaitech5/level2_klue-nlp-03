@@ -1,12 +1,14 @@
 # 이 파일을 config.yaml로 이름을 변경하고 사용하세요.
-project_name: KLUE
+entity_name: ggul_tiger
+project_name: KLUE2
 
 seed: 3
 num_workers: 4
 
-model_name: klue/roberta-small
+model_name: klue/bert-base
+# model_path: results_mlm/05-12-12:39:51 # [null, 모델이 저장된 폴더]
 lr: 2e-5
-lr_scheduler: StepLR(optimizer, step_size=2, gamma=0.85)
+lr_scheduler: null
 # CosineAnnealingLR(optimizer, T_max=5, eta_min=8e-6)
 # StepLR(optimizer, step_size=2, gamma=0.85)
 batch_size: 128
@@ -15,21 +17,27 @@ test_batch_size: 128
 predict_batch_size: 128
 max_len: 200
 val_size: 0.2
-epoch: 10
-loss: CrossEntropyLoss
-optim: AdamW
+epoch: 7
 patience: 10
 
+loss: CrossEntropyLoss
+optim: AdamW
+
 model_class: BaseModel # BaseModel, ModelWithBinaryClassification
-input_format: typed_entity_marker_punct # select : default, entity_mask, entity_marker_punct, typed_entity_marker_punct
+input_format: default # select : default, entity_mask, entity_marker_punct, typed_entity_marker_punct
 
 earlystopping_monitor: val_micro_F1_score
 best_model_monitor: val_micro_F1_score
 
 min_epoch_to_log: 2
 
-EDA: true
-num_aug: 1500
+# EDA
+EDA: null # [null, 500, 1000]
+# back translation 안하면 null
+backtrans_en_path: null # 안하면 null
+backtrans_jp_path: ./data/backtranslated_ja.csv # 안하면 null
+aug_labels: 27
+
 train_dir: ./data/train_data.csv
 test_dir: ./data/test_data.csv
 result_dir: ./results/
