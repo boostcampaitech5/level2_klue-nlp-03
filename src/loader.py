@@ -4,6 +4,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from utils import label_to_num, load_data, preprocessing_dataset
+from augmentation.EDA import EDA, EDA_DataFrame
 
 
 class KLUEDataset(Dataset):
@@ -122,6 +123,15 @@ class KLUEDataLoader(pl.LightningDataModule):
                 test_size=self.cfg["val_size"],
                 random_state=self.cfg["seed"],
             )
+            if self.cfg['EDA']:
+                train_df = EDA_DataFrame(
+                    df=train_df,
+                    aug_per_label=int(self.cfg['num_aug']*(1-self.cfg['val_size'])),
+                )
+                val_df = EDA_DataFrame(
+                    df=val_df,
+                    aug_per_label=int(self.cfg['num_aug']*self.cfg['val_size']),
+                )
             self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
             self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
 

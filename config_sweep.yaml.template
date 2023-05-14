@@ -1,8 +1,8 @@
 method: grid # grid, random, bayes
 
 metric:
-  name: val_loss # val_loss, val_micro_F1_score
-  goal: minimize # minimize, maximize
+  name: val_micro_F1_score # val_loss, val_micro_F1_score
+  goal: maximize # minimize, maximize
 
 # How to
 # 1. 고정된 hyperparamer는 [value: 단일값] 설정합니다.
@@ -16,21 +16,21 @@ parameters:
   model_name: 
     values: [klue/bert-base] # klue/bert-base, klue/bert-large, klue/roberta-base, klue/roberta-large
   lr: 
-    values: [1e-5, 2e-5, 3e-5, 4e-5, 5e-5] # [1e-5, 2e-5, 3e-5, 4e-5, 5e-5]
+    values: [2e-5] # [1e-5, 2e-5, 3e-5, 4e-5, 5e-5]
   lr_scheduler: 
     value: null
   batch_size: 
-    values: [32] # [32, 64]
+    values: [128] # [32, 64]
   val_batch_size:
-    values: [32]
+    values: [128]
   test_batch_size:
-    values: [32]
+    values: [128]
   predict_batch_size:
-    values: [32]
+    values: [128]
   max_len: 
     values: [200] # [200,256]
   val_size: 
-    value: 0.1
+    value: 0.2
   epoch: 
     value: 10
   loss: 
@@ -38,7 +38,12 @@ parameters:
   optim: 
     value: AdamW
   patience:
-    value: 5
+    value: 10
+
+  model_class: 
+    value: BaseModel # BaseModel, ModelWithBinaryClassification
+  input_format: 
+    value: typed_entity_marker_punct # select : default, entity_mask, entity_marker_punct, typed_entity_marker_punct
 
   earlystopping_monitor:
     value: val_micro_F1_score
@@ -47,6 +52,10 @@ parameters:
   min_epoch_to_log:
     value: 2
 
+  EDA:
+    value: true
+  num_aug:
+    values: [1500]
   train_dir: 
     value: ./data/train_data.csv
   test_dir: 
