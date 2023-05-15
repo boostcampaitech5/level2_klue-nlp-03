@@ -32,11 +32,7 @@ best_model_monitor: val_micro_F1_score
 min_epoch_to_log: 2
 
 # EDA
-EDA: null # [null, 500, 1000]
-# back translation 안하면 null
-backtrans_en_path: null # 안하면 null
-backtrans_jp_path: ./data/backtranslated_ja.csv # 안하면 null
-aug_labels: 27
+EDA: 500 # [null, 500, 1000]
 
 train_dir: ./data/train_data.csv
 test_dir: ./data/test_data.csv

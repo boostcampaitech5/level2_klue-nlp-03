@@ -62,15 +62,10 @@ parameters:
 
   # EDA
   EDA: 
-    value: null # [null, 500, 1000]
-  # back translation 안하면 null
-  backtrans_path: 
-    value: ./data/backtranslated_ja.csv # 안하면 null
-  aug_labels:
-    values: [29,27,25,19,12]
+    values: [null,500,1000] # [null, 500, 1000]
 
   train_dir: 
-    value: ./data/train_data.csv
+    values: [./data/train_jp.csv, ./data/train_en.csv, ./data/train_en_jp.csv]
   test_dir: 
     value: ./data/test_data.csv
   result_dir: 

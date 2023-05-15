@@ -124,17 +124,6 @@ class KLUEDataLoader(pl.LightningDataModule):
                 random_state=self.cfg["seed"],
             )
 
-            indices=total_df['label'].value_counts().sort_values().index[:self.cfg['aug_labels']]
-            if self.cfg['backtrans_path']:
-                back_df = load_data(self.cfg['backtrans_path'])
-                back_df = preprocessing_dataset(back_df)
-
-                train_intersection_ids=list(set(train_df['id']).intersection(set(back_df['id'])))
-                back_train=back_df.loc[back_df['id'].isin(train_intersection_ids)]
-                back_train=back_df.loc[back_df['label'].isin(indices)]
-                train_df = pd.concat([train_df,back_train])
-                train_df = train_df.sample(frac=1).reset_index(drop=True)
-
             if self.cfg['EDA']:
                 train_df = EDA_DataFrame(
                     df=train_df,
