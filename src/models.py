@@ -297,7 +297,7 @@ class BinaryClassifier(ModelWithEntityMarker):
         assert probs.size(-1) == 30, 'lael size should be 30'
         preds = torch.where(logits>=0.5, 1., 0.).squeeze()
         return {'preds':preds, 'probs':probs}
-    
+
 class TripleClassifier(ModelWithEntityMarker):
     ''' TripleClassifier
     no-relation or per or org
@@ -305,3 +305,24 @@ class TripleClassifier(ModelWithEntityMarker):
     def __init__(self, tokenizer, cfg: dict, num_labels=3):
         super().__init__(tokenizer, cfg, num_labels=3)
         self.classifier = torch.nn.Linear(self.hidden_size, num_labels)
+
+    def compute_metrics(self, result):
+        """loss와 score를 계산하는 함수"""
+        logits = result["logits"]
+        probs = F.softmax(logits, dim=1)
+        preds = torch.argmax(probs, dim=1)
+        labels = result["labels"]
+        loss = self.lossF(logits, labels)
+        # calculate accuracy using sklearn's function
+        precision, recall, f1, _ =  precision_recall_fscore_support(labels, preds, average='micro')
+        acc = accuracy_score(labels, preds)  # 리더보드 평가에는 포함되지 않습니다.
+
+        return {"loss": loss, "micro_F1_score": f1, "precision": precision, "accuracy": acc}
+    def on_validation_epoch_end(self):
+        metrics = self.compute_metrics(self.val_epoch_result)
+        self.log("val_loss", metrics["loss"], sync_dist=True)
+        self.log("val_micro_F1_score", metrics["micro_F1_score"], sync_dist=True)
+        self.log("val_precision", metrics["precision"], sync_dist=True)
+        self.log("val_accuracy", metrics["accuracy"], sync_dist=True)
+        self.val_epoch_result["logits"] = torch.tensor([], dtype=torch.float32)
+        self.val_epoch_result["labels"] = torch.tensor([], dtype=torch.int64)
