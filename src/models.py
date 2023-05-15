@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from transformers import AutoModelForSequenceClassification, AutoModel
 from utils import klue_re_auprc, klue_re_micro_f1, model_freeze
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
 
 class BaseModel(pl.LightningModule):
@@ -183,7 +183,7 @@ class ModelWithEntityMarker(BaseModel):
                         last_hidden_state[i, subj_idx[0]].view(-1, self.hidden_size),
                         last_hidden_state[i, obj_idx[0]].view(-1, self.hidden_size)
                     ], dim=1) #(1, hdim * 2)
-                elif self.pooing_type == 'entity_start_end_token': # (1, hdim * 2)
+                elif self.pooling_type == 'entity_start_end_token': # (1, hdim * 2)
                     hidden_states = torch.cat([
                         (last_hidden_state[i, subj_idx[0]] + last_hidden_state[i, subj_idx[1]]).view(-1, self.hidden_size) / 2, 
                         (last_hidden_state[i, obj_idx[0]] + last_hidden_state[i, obj_idx[1]]).view(-1, self.hidden_size) / 2, 
@@ -297,3 +297,11 @@ class BinaryClassifier(ModelWithEntityMarker):
         assert probs.size(-1) == 30, 'lael size should be 30'
         preds = torch.where(logits>=0.5, 1., 0.).squeeze()
         return {'preds':preds, 'probs':probs}
+    
+class TripleClassifier(ModelWithEntityMarker):
+    ''' TripleClassifier
+    no-relation or per or org
+    '''
+    def __init__(self, tokenizer, cfg: dict, num_labels=3):
+        super().__init__(tokenizer, cfg, num_labels=3)
+        self.classifier = torch.nn.Linear(self.hidden_size, num_labels)
