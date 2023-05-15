@@ -8,12 +8,13 @@ import re
 
 
 class KLUEDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, tokenizer, input_format,model_class):
+    def __init__(self, df: pd.DataFrame, tokenizer, input_format, model_class, save_sentence=False):
         self.df = df
         self.label = label_to_num(df["label"].to_list())
         self.tokenizer = tokenizer
         self.model_class = model_class
         self.input_format = input_format
+        self.save_sentence = save_sentence
 
         if self.input_format not in ('default', 'entity_mask','entity_marker','entity_marker_punct','typed_entity_marker', 'typed_entity_marker_punct'):
             raise Exception("Invalid input format!")
@@ -25,12 +26,13 @@ class KLUEDataset(Dataset):
         item = self.df.iloc[idx]
         tokenized_sentence = self.tokenize(item)
         ret_dict = {
-            "sentence": item["sentence"],
             "input_ids": tokenized_sentence["input_ids"],
             "token_type_ids": tokenized_sentence["token_type_ids"],
             "attention_mask": tokenized_sentence["attention_mask"],
             "labels": torch.tensor(self.label[idx]),
         }
+        if self.save_sentence:
+            ret_dict["sentence"] = item["sentence"]
         return ret_dict
     
     # 임시
@@ -43,8 +45,6 @@ class KLUEDataset(Dataset):
         # Case 00 : default (no masking or marking)
         if self.input_format == 'default':
             joined_entity = "[SEP]".join([item["subject_entity"]["word"], item["object_entity"]["word"]])
-            if self.model_class == 'ModelWithBinaryClassification':
-                 joined_entity = "[CLS]" + joined_entity
             # entity를 인식시켜주는 부분과 문장 부분을 서로 다른 token type id로 구별하기 위해서 joined_entity와 sentence를 따로 넣어줌
             tokenized_sentence = self.tokenizer(
                 joined_entity,
@@ -73,8 +73,8 @@ class KLUEDataset(Dataset):
 
         # Case 01 : entity_mask
         if self.input_format == 'entity_mask':
-            subj_type = f'[SUBJ-{subj_type}]'
-            obj_type = f'[OBJ-{obj_type}]'
+            subj_type = f'[S-{subj_type}]'
+            obj_type = f'[O-{obj_type}]'
             sent = sent.replace(subj_word, subj_type)
             sent = sent.replace(obj_word, obj_type)
 
@@ -95,10 +95,10 @@ class KLUEDataset(Dataset):
         # Case 04 : typed_entity_marker
         elif self.input_format == 'typed_entity_marker':
             # change format of subj/obj type 
-            subj_type1 = '[S:{}]'.format(subj_type)
-            subj_type2 = '[/S:{}]'.format(subj_type)
-            obj_type1 = '[O:{}]'.format(obj_type)
-            obj_type2 = '[/O:{}]'.format(obj_type)
+            subj_type1 = '[S-{}]'.format(subj_type)
+            subj_type2 = '[/S-{}]'.format(subj_type)
+            obj_type1 = '[O-{}]'.format(obj_type)
+            obj_type2 = '[/O-{}]'.format(obj_type)
 
             # add marker token
             subj_idx = sent.find(subj_word)
@@ -116,10 +116,8 @@ class KLUEDataset(Dataset):
             sent = sent[:subj_idx] + '@ * ' + subj_type + ' * ' + subj_word + ' @' + sent[subj_idx+len(subj_word):]
             obj_idx = sent.find(obj_word)
             sent = sent[:obj_idx] + '# ^ ' + obj_type + ' ^ ' + obj_word + ' #' + sent[obj_idx+len(obj_word):]
-        
-        # ModelWithBinaryClassification
-        if self.model_class == 'ModelWithBinaryClassification':
-            sent = '[CLS]' + sent
+
+           
 
         tokenized_sentence = self.tokenizer(
             sent,
@@ -154,32 +152,38 @@ class KLUEDataLoader(pl.LightningDataModule):
 
     def setup(self, stage: str):
         if stage == "fit":
-            total_df = load_data(self.cfg["train_dir"])
-            total_df = preprocessing_dataset(total_df)
-            train_df, val_df = train_test_split(
-                total_df,
-                stratify=total_df["label"].values,
-                test_size=self.cfg["val_size"],
-                random_state=self.cfg["seed"],
-            )
+            # total_df = load_data(self.cfg["train_dir"])
+            # total_df = preprocessing_dataset(total_df)
+            # train_df, val_df = train_test_split(
+            #     total_df,
+            #     stratify=total_df["label"].values,
+            #     test_size=self.cfg["val_size"],
+            #     random_state=self.cfg["seed"],
+            # )
+            train_df = load_data(self.cfg["train_dir"])
+            train_df = preprocessing_dataset(train_df)
+            val_df = load_data(self.cfg["val_dir"])
+            val_df = preprocessing_dataset(val_df)
             self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
-            self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
+            self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'], save_sentence=True)
 
         if stage == "predict":
             predict_df = load_data(self.cfg["test_dir"])
             predict_df = preprocessing_dataset(predict_df)
-            self.predict_dataset = KLUEDataset(predict_df, self.tokenizer, self.cfg['input_format'], self.cfg['model_class'])
+            self.predict_dataset = KLUEDataset(predict_df, self.tokenizer, self.cfg['input_format'], self.cfg['model_class'], save_sentence=True)
 
     def train_dataloader(self):
         return DataLoader(
             self.train_dataset,
             batch_size=self.cfg["batch_size"],
             num_workers=self.cfg["num_workers"],
+            shuffle=True
         )
 
     def val_dataloader(self):
         return DataLoader(
             self.val_dataset,
+            shuffle=True,
             batch_size=self.cfg["val_batch_size"],
             num_workers=self.cfg["num_workers"],
         )
