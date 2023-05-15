@@ -115,14 +115,10 @@ class KLUEDataLoader(pl.LightningDataModule):
 
     def setup(self, stage: str):
         if stage == "fit":
-            total_df = load_data(self.cfg["train_dir"])
-            total_df = preprocessing_dataset(total_df)
-            train_df, val_df = train_test_split(
-                total_df,
-                stratify=total_df["label"].values,
-                test_size=self.cfg["val_size"],
-                random_state=self.cfg["seed"],
-            )
+            train_df = load_data(self.cfg["train_dir"])
+            train_df = preprocessing_dataset(train_df)
+            val_df = load_data(self.cfg["val_dir"])
+            val_df = preprocessing_dataset(val_df)
 
             if self.cfg['EDA']:
                 train_df = EDA_DataFrame(

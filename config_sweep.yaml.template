@@ -66,6 +66,8 @@ parameters:
 
   train_dir: 
     values: [./data/train_jp.csv, ./data/train_en.csv, ./data/train_en_jp.csv]
+  val_dir: 
+    value: ./data/split_val_data.csv
   test_dir: 
     value: ./data/test_data.csv
   result_dir: 
