@@ -161,9 +161,9 @@ class KLUEDataLoader(pl.LightningDataModule):
             #     random_state=self.cfg["seed"],
             # )
             train_df = load_data(self.cfg["train_dir"])
-            preprocessing_dataset(train_df)
+            train_df = preprocessing_dataset(train_df)
             val_df = load_data(self.cfg["val_dir"])
-            preprocessing_dataset(val_df)
+            val_df = preprocessing_dataset(val_df)
             self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
             self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'], save_sentence=True)
 
