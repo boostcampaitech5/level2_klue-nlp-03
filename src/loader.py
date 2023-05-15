@@ -135,20 +135,10 @@ class KLUEDataLoader(pl.LightningDataModule):
                 train_df = pd.concat([train_df,back_train])
                 train_df = train_df.sample(frac=1).reset_index(drop=True)
 
-                val_intersection_ids=list(set(val_df['id']).intersection(set(back_df['id'])))
-                back_val=back_df.loc[back_df['id'].isin(val_intersection_ids)]
-                back_val=back_df.loc[back_df['label'].isin(indices)]
-                val_df = pd.concat([val_df,back_val])
-                val_df = val_df.sample(frac=1).reset_index(drop=True)
-
             if self.cfg['EDA']:
                 train_df = EDA_DataFrame(
                     df=train_df,
                     aug_per_label=int(self.cfg['EDA']*(1-self.cfg['val_size'])),
-                )
-                val_df = EDA_DataFrame(
-                    df=val_df,
-                    aug_per_label=int(self.cfg['EDA']*self.cfg['val_size']),
                 )
             self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
             self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
