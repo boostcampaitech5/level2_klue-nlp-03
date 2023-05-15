@@ -5,7 +5,7 @@ project_name: KLUE2
 
 model_name: klue/roberta-base
 lr: 3e-5
-lr_scheduler: StepLR(optimizer, step_size=2, gamma=0.85)
+lr_scheduler: LambdaLR(optimizer, lr_lambda=self.lr_lambda)
 # CosineAnnealingLR(optimizer, T_max=5, eta_min=8e-6)
 # StepLR(optimizer, step_size=2, gamma=0.85)
 batch_size: 64
@@ -18,14 +18,19 @@ epoch: 10
 loss: CrossEntropyLoss
 optim: AdamW
 patience: 10
+label_smoothing: 0.0 # 0.0 (default), 0.1
+class_weight: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+FocalLoss_gamma: 2
 
-model_class: BaseModel # BaseModel, ModelWithBinaryClassification, ModelWithEntityMarker
-input_format: entity_mask # default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
+model_class: ModelWithEntityMarker # BaseModel, ModelWithEntityMarker, BinaryClassifier
+input_format: typed_entity_marker_punct # default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
+pooling_type: entity_start_token # entity_start_token, entity_start_end_token, entity_tokens
 
 earlystopping_monitor: val_micro_F1_score
-best_model_monitor: val_micro_F1_score
+best_model_monitor: val_micro_F1_score # val_micro_F1_score
 
 min_epoch_to_log: 0
-train_dir: ./data/train_data.csv
+train_dir: ./data/split_train_data.csv
+val_dir: ./data/split_val_data.csv
 test_dir: ./data/test_data.csv
 result_dir: ./results/
