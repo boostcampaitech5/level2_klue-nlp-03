@@ -37,7 +37,7 @@ parameters:
   epoch: 
     value: 1
   loss: 
-    value: CrossEntropyLoss
+    value: nn.CrossEntropyLoss
   optim: 
     value: AdamW
   patience:

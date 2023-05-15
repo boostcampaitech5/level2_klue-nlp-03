@@ -15,7 +15,7 @@ predict_batch_size: 32
 max_len: 256
 val_size: 0.2
 epoch: 10
-loss: CrossEntropyLoss
+loss: nn.CrossEntropyLoss # nn.CrossEntropyLoss, custom_loss.FocalLoss
 optim: AdamW
 patience: 10
 label_smoothing: 0.0 # 0.0 (default), 0.1
