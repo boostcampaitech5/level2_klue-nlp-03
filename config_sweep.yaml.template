@@ -13,14 +13,14 @@ parameters:
   num_workers: 
     value: 4
   project_name:
-    value: KLUE
+    value: KLUE2
   
   model_name: 
     values: [klue/roberta-base] # klue/bert-base, klue/bert-large, klue/roberta-base, klue/roberta-large
   lr: 
     values: [3e-5] # [1e-5, 2e-5, 3e-5, 4e-5, 5e-5]
   lr_scheduler:
-    value: LambdaLR(optimizer, lr_lambda=self.lr_lambda)
+    value: StepLR(optimizer, step_size=30, gamma=0.85)
 
   batch_size: 
     value: 64
@@ -43,14 +43,11 @@ parameters:
   patience:
     value: 10
   model_class:
-    values: [ModelWithEntityMarker] # BaseModel, ModelWithEntityMarker, BinaryClassifier
+    values: [BaseModel] # BaseModel, ModelWithBinaryClassification, ModelWithEntityMarker
   input_format:
-    values: [typed_entity_marker_punct] # default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
-  pooling_type:
-    values: [entity_start_token] # entity_start_token, entity_start_end_token, entity_tokens
-
-  label_smoothing:
-    values: [0.0] # 0.0 (default) , 0.1
+    values: [default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct] 
+    # default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
+  pooling_type: mean # mean, double, triple
 
   earlystopping_monitor:
     value: val_micro_F1_score
@@ -61,7 +58,9 @@ parameters:
     value: 0
 
   train_dir: 
-    value: ./data/train_data.csv
+    value: ./data/split_train_data.csv
+  val_dir: 
+    value: ./data/split_val_data.csv
   test_dir: 
     value: ./data/test_data.csv
   result_dir: 
