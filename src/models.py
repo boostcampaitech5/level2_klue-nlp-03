@@ -1,6 +1,8 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+import custom_loss
 from transformers import AutoModelForSequenceClassification, AutoModel
 from utils import klue_re_auprc, klue_re_micro_f1, model_freeze
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
@@ -15,7 +17,13 @@ class BaseModel(pl.LightningModule):
             cfg["model_name"], num_labels=30
         )
         self.model_resize()
-        self.lossF = eval("torch.nn." + cfg["loss"])(label_smoothing=self.cfg['label_smoothing'])
+        self.lossF = eval(cfg["loss"])
+        class_weight = torch.tensor(cfg["class_weight"], dtype=torch.float32).to("cuda:0")
+
+        if cfg["loss"] == "nn.CrossEntropyLoss":
+            self.lossF = self.lossF(weight=class_weight, label_smoothing=self.cfg["label_smoothing"])
+        elif cfg["loss"] == "custom_loss.FocalLoss":
+            self.lossF = self.lossF(alpha=class_weight, gamma=cfg["FocalLoss_gamma"])
 
         self.val_epoch_result = {
             "logits": torch.tensor([], dtype=torch.float32),
@@ -69,16 +77,16 @@ class BaseModel(pl.LightningModule):
     def compute_metrics(self, result):
         """loss와 score를 계산하는 함수"""
         logits = result["logits"]
+        labels = result["labels"]
         probs = F.softmax(logits, dim=1)
         preds = torch.argmax(probs, dim=1)
-        labels = result["labels"]
-        loss = self.lossF(logits, labels)
+        
         # calculate accuracy using sklearn's function
         f1 = klue_re_micro_f1(preds, labels)
         auprc = klue_re_auprc(probs, labels)
         acc = accuracy_score(labels, preds)  # 리더보드 평가에는 포함되지 않습니다.
 
-        return {"loss": loss, "micro_F1_score": f1, "auprc": auprc, "accuracy": acc}
+        return {"micro_F1_score": f1, "auprc": auprc, "accuracy": acc}
 
     def training_step(self, batch, batch_idx):
         output = self.forward(batch)
@@ -90,8 +98,10 @@ class BaseModel(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         output = self.forward(batch)
+        loss = self.lossF(output["logits"], batch["labels"])
         logits = output["logits"].detach().cpu()  # pt tensor (batch_size, num_labels)
         labels = batch["labels"].detach().cpu()  # pt tensor (batch_size)
+        self.log("val_loss", loss, on_epoch=True)
         self.val_epoch_result["logits"] = torch.cat(
             (self.val_epoch_result["logits"], logits), dim=0
         )
@@ -101,7 +111,6 @@ class BaseModel(pl.LightningModule):
 
     def on_validation_epoch_end(self):
         metrics = self.compute_metrics(self.val_epoch_result)
-        self.log("val_loss", metrics["loss"], sync_dist=True)
         self.log("val_micro_F1_score", metrics["micro_F1_score"], sync_dist=True)
         self.log("val_auprc", metrics["auprc"], sync_dist=True)
         self.log("val_accuracy", metrics["accuracy"], sync_dist=True)
@@ -138,7 +147,6 @@ class ModelWithEntityMarker(BaseModel):
         self.model = AutoModel.from_pretrained(cfg["model_name"])
         self.model_resize()
         # self.model = model_freeze(self.model)
-        self.lossF = eval("torch.nn." + cfg["loss"])(label_smoothing=self.cfg['label_smoothing'])
         self.hidden_size = self.model.config.hidden_size
         self.pooler = torch.nn.Linear(self.hidden_size*2, self.hidden_size, bias=True)
         self.classifier = torch.nn.Linear(self.hidden_size, num_labels, bias=True)
@@ -304,7 +312,18 @@ class TripleClassifier(ModelWithEntityMarker):
     '''
     def __init__(self, tokenizer, cfg: dict, num_labels=3):
         super().__init__(tokenizer, cfg, num_labels=3)
+        self.lossF = eval("torch.nn." + cfg["loss"])(
+            weight=torch.Tensor([cfg['class_weight'],1.0, 1.0]),
+            label_smoothing=self.cfg['label_smoothing']
+            )
         self.classifier = torch.nn.Linear(self.hidden_size, num_labels)
+        self.test_result = {
+            "sentence": [],
+            "tokenized": [],
+            "target": [],
+            "predict": [],
+            "probs":[]
+        }
 
     def compute_metrics(self, result):
         """loss와 score를 계산하는 함수"""
@@ -312,12 +331,12 @@ class TripleClassifier(ModelWithEntityMarker):
         probs = F.softmax(logits, dim=1)
         preds = torch.argmax(probs, dim=1)
         labels = result["labels"]
-        loss = self.lossF(logits, labels)
+        loss = self.lossF(logits.to(self.device), labels.to(self.device))
         # calculate accuracy using sklearn's function
         precision, recall, f1, _ =  precision_recall_fscore_support(labels, preds, average='micro')
         acc = accuracy_score(labels, preds)  # 리더보드 평가에는 포함되지 않습니다.
 
-        return {"loss": loss, "micro_F1_score": f1, "precision": precision, "accuracy": acc}
+        return {"loss": loss.detach().cpu(), "micro_F1_score": f1, "precision": precision, "accuracy": acc}
     def on_validation_epoch_end(self):
         metrics = self.compute_metrics(self.val_epoch_result)
         self.log("val_loss", metrics["loss"], sync_dist=True)
@@ -326,3 +345,19 @@ class TripleClassifier(ModelWithEntityMarker):
         self.log("val_accuracy", metrics["accuracy"], sync_dist=True)
         self.val_epoch_result["logits"] = torch.tensor([], dtype=torch.float32)
         self.val_epoch_result["labels"] = torch.tensor([], dtype=torch.int64)
+
+    def test_step(self, batch, batch_idx):
+        output = self.forward(batch)
+
+        # 원래 문장, 원래 target, 모델의 prediction을 저장
+        self.test_result["sentence"].extend(batch["sentence"])
+        self.test_result["tokenized"].extend(
+            self.tokenizer.batch_decode(batch["input_ids"].squeeze())
+        )
+        self.test_result["target"].extend(batch["labels"].tolist())
+        self.test_result["predict"].extend(
+            torch.argmax(output["logits"], dim=1).tolist()
+        )
+        self.test_result["probs"].extend(
+            F.softmax(output["logits"], dim=1).tolist()
+        )

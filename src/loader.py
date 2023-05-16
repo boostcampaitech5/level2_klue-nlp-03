@@ -5,7 +5,8 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from utils import label_to_num, load_data, preprocessing_dataset
 import re 
-
+import yaml
+import data_cleaning
 
 class KLUEDataset(Dataset):
     def __init__(self, df: pd.DataFrame, tokenizer, input_format, model_class, save_sentence=False):
@@ -57,40 +58,84 @@ class KLUEDataset(Dataset):
             return tokenized_sentence
         
         # Case 01 ~ 05
-        subj_type = item["subject_entity"]["type"]
-        obj_type = item["object_entity"]["type"]
+        type_convert = {'PER':'사람', 'ORG':'조직','LOC':'지역','NOH':'숫자','POH':'기타','DAT':'날짜'}
+        try: 
+            subj_type = type_convert[item["subject_entity"]["type"]]
+            obj_type = type_convert[item["object_entity"]["type"]]
+        except: 
+            subj_type = item["subject_entity"]["type"]
+            obj_type = item["object_entity"]["type"]
 
         # tokienize item with masking or marking
         sent = item['sentence']
 
         subj_word = item["subject_entity"]["word"]
+        subj_start = item["subject_entity"]["start_idx"]
+        subj_end = item["subject_entity"]["end_idx"]
+
         obj_word = item["object_entity"]["word"]
+        obj_start = item["object_entity"]["start_idx"]
+        obj_end = item["object_entity"]["end_idx"]
+
+        # 일단 word가 등장하는 모든 index를 구하고 몇번째 등장하는 word가 subject/object인지 subj_idx/obj_idx에 저장
+        subj_idx=None
+        for i, match in enumerate(re.finditer(subj_word, sent)):
+            start,e = match.span()
+            if start==subj_start:
+                subj_idx = i
+                break
+
+        obj_idx=None
+        for i, match in enumerate(re.finditer(obj_word, sent)):
+            start,e = match.span()
+            if start==obj_start:
+                obj_idx = i
+                break
 
         # preprocessing
         sent = self.preprocessing(sent)
         subj_word = self.preprocessing(subj_word)
         obj_word = self.preprocessing(obj_word)
 
+        subj_matches = list(re.finditer(re.escape(subj_word), sent))
+        subj_start, subj_end = subj_matches[subj_idx].span()
+        obj_matches = list(re.finditer(re.escape(obj_word), sent))
+        obj_start, obj_end = obj_matches[obj_idx].span()
+
         # Case 01 : entity_mask
         if self.input_format == 'entity_mask':
             subj_type = f'[S-{subj_type}]'
             obj_type = f'[O-{obj_type}]'
-            sent = sent.replace(subj_word, subj_type)
-            sent = sent.replace(obj_word, obj_type)
+            if subj_start < obj_start:
+                # subject가 먼저 등장, 뒤에 오는 object부터 처리
+                sent = sent[:obj_start] + obj_type + sent[obj_end:]
+                sent = sent[:subj_start] + subj_type + sent[subj_end:]
+            else:
+                # object가 먼저 등장, 뒤에 오는 subject부터 처리
+                sent = sent[:subj_start] + subj_type + sent[subj_end:]
+                sent = sent[:obj_start] + obj_type + sent[obj_end:]
 
          # Case 02 : entity_marker
         elif self.input_format == 'entity_marker':
-            subj_idx = sent.find(subj_word)
-            sent = sent[:subj_idx] + '[E1]' + subj_word + '[/E1]' + sent[subj_idx+len(subj_word):]
-            obj_idx = sent.find(obj_word)
-            sent = sent[:obj_idx] + '[E2]' + obj_word + '[/E2]' + sent[obj_idx+len(obj_word):]
+            if subj_start < obj_start:
+                # subject가 먼저 등장, 뒤에 오는 object부터 처리
+                sent = sent[:obj_start]+'[E2]'+obj_word+'[/E2]'+sent[obj_end:]
+                sent = sent[:subj_start]+'[E1]'+subj_word+'[/E1]'+sent[subj_end:]
+            else:
+                # object가 먼저 등장, 뒤에 오는 subject부터 처리
+                sent = sent[:subj_start]+'[E1]'+subj_word+'[/E1]'+sent[subj_end:]
+                sent = sent[:obj_start]+'[E2]'+obj_word+'[/E2]'+sent[obj_end:]
 
         # Case 03 : entity_marker_punct
         elif self.input_format == 'entity_marker_punct':
-            subj_idx = sent.find(subj_word)
-            sent = sent[:subj_idx] + '@' + subj_word + '@' + sent[subj_idx+len(subj_word):]
-            obj_idx = sent.find(obj_word)
-            sent = sent[:obj_idx] + '#' + obj_word + '#' + sent[obj_idx+len(obj_word):]
+            if subj_start < obj_start:
+                # subject가 먼저 등장, 뒤에 오는 object부터 처리
+                sent = sent[:obj_start] + '#' + obj_word + '#' + sent[obj_end:]
+                sent = sent[:subj_start] + '@' + subj_word + '@' + sent[subj_end:]
+            else:
+                sent = sent[:subj_start] + '@' + subj_word + '@' + sent[subj_end:]
+                sent = sent[:obj_start] + '#' + obj_word + '#' + sent[obj_end:]
+
 
         # Case 04 : typed_entity_marker
         elif self.input_format == 'typed_entity_marker':
@@ -101,10 +146,13 @@ class KLUEDataset(Dataset):
             obj_type2 = '[/O-{}]'.format(obj_type)
 
             # add marker token
-            subj_idx = sent.find(subj_word)
-            sent = sent[:subj_idx] + subj_type1 + subj_word + subj_type2 + sent[subj_idx+len(subj_word):]
-            obj_idx = sent.find(obj_word)
-            sent = sent[:obj_idx] + obj_type1 + obj_word + obj_type2 + sent[obj_idx+len(obj_word):]
+            if subj_start < obj_start:
+                # subject가 먼저 등장, 뒤에 오는 object부터 처리
+                sent = sent[:obj_start] + obj_type1 + obj_word + obj_type2 + sent[obj_end:]
+                sent = sent[:subj_start] + subj_type1 + subj_word + subj_type2 + sent[subj_end:]
+            else:
+                sent = sent[:subj_start] + subj_type1 + subj_word + subj_type2 + sent[subj_end:]
+                sent = sent[:obj_start] + obj_type1 + obj_word + obj_type2 + sent[obj_end:]
 
         # Case 05 : typed_entity_marker_punct
         elif self.input_format == 'typed_entity_marker_punct':
@@ -112,12 +160,15 @@ class KLUEDataset(Dataset):
             subj_type = subj_type.replace("_", " ").lower()
             obj_type = obj_type.replace("_", " ").lower()
             # add marker token
-            subj_idx = sent.find(subj_word)
-            sent = sent[:subj_idx] + '@ * ' + subj_type + ' * ' + subj_word + ' @' + sent[subj_idx+len(subj_word):]
-            obj_idx = sent.find(obj_word)
-            sent = sent[:obj_idx] + '# ^ ' + obj_type + ' ^ ' + obj_word + ' #' + sent[obj_idx+len(obj_word):]
-
-           
+            if subj_start < obj_start:
+                # subject가 먼저 등장, 뒤에 오는 object부터 처리
+                sent = sent[:obj_start] + '# ^ ' + obj_type + ' ^ ' + obj_word + ' #' + sent[subj_end:]
+                sent = sent[:subj_start] + '@ * ' + subj_type + ' * ' + subj_word + ' @' + sent[subj_end:]
+            else:
+                sent = sent[:subj_start] + '@ * ' + subj_type + ' * ' + subj_word + ' @' + sent[subj_end:]
+                sent = sent[:obj_start] + '# ^ ' + obj_type + ' ^ ' + obj_word + ' #' + sent[subj_end:]
+        
+        # print(sent)
 
         tokenized_sentence = self.tokenizer(
             sent,
@@ -129,14 +180,19 @@ class KLUEDataset(Dataset):
         
         return tokenized_sentence
     
-    def preprocessing(self, sent):
-        patterns = [
-                (r'[#@^*]', ''),
-                (r'\s+', ' ') # 이중 공백 제거
-            ]
+    def preprocessing(self, sent:str)->str:
+        """구두점 및 이중공백 제거
 
-        for old, new in patterns:
-            sent = re.sub(old, new, sent)
+        Args:
+            sent (str): _description_
+
+        Returns:
+            str: _description_
+        """
+        if re.findall(r'[一-龥]+', sent):
+            sent = data_cleaning.hanja_cleaning(sent)
+        sent = data_cleaning.japanese_cleaning(sent)
+        
         return sent.strip()
 
 
@@ -152,14 +208,6 @@ class KLUEDataLoader(pl.LightningDataModule):
 
     def setup(self, stage: str):
         if stage == "fit":
-            # total_df = load_data(self.cfg["train_dir"])
-            # total_df = preprocessing_dataset(total_df)
-            # train_df, val_df = train_test_split(
-            #     total_df,
-            #     stratify=total_df["label"].values,
-            #     test_size=self.cfg["val_size"],
-            #     random_state=self.cfg["seed"],
-            # )
             train_df = load_data(self.cfg["train_dir"])
             train_df = preprocessing_dataset(train_df)
             val_df = load_data(self.cfg["val_dir"])
