@@ -5,8 +5,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from utils import label_to_num, load_data, preprocessing_dataset
 import re 
-import yaml
-import data_cleaning
+
 
 class KLUEDataset(Dataset):
     def __init__(self, df: pd.DataFrame, tokenizer, input_format, model_class, save_sentence=False):
@@ -189,10 +188,12 @@ class KLUEDataset(Dataset):
         Returns:
             str: _description_
         """
-        if re.findall(r'[一-龥]+', sent):
-            sent = data_cleaning.hanja_cleaning(sent)
-        sent = data_cleaning.japanese_cleaning(sent)
-        
+        patterns = [
+                (r'[#@]', '-'),
+            ]
+
+        for old, new in patterns:
+            sent = re.sub(old, new, sent)
         return sent.strip()
 
 
