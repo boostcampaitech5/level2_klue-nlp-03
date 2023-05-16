@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
 from transformers import AutoModelForSequenceClassification, AutoModel
-from utils import klue_re_auprc, klue_re_micro_f1, model_freeze
+from utils import klue_re_auprc, klue_re_micro_f1, model_freeze, label_to_num
 from sklearn.metrics import accuracy_score
 
 
@@ -297,3 +297,78 @@ class BinaryClassifier(ModelWithEntityMarker):
         assert probs.size(-1) == 30, 'lael size should be 30'
         preds = torch.where(logits>=0.5, 1., 0.).squeeze()
         return {'preds':preds, 'probs':probs}
+    
+
+class RECENT(ModelWithEntityMarker):
+    def __init__(self, tokenizer, cfg: dict, num_labels=30):
+        super().__init__(tokenizer, cfg, num_labels)
+
+        self.restrict_dict = {
+            "ORG_PER": ["no_relation", "org:founded_by", "org:top_members/employees"],
+            "ORG_ORG": ["no_relation", "org:founded_by", "org:member_of", "org:political/religious_affiliation", "org:members", "org:alternate_names", "org:place_of_headquarters", "org:product"],
+            "ORG_DAT": ["no_relation", "org:dissolved", "org:founded"], 
+            "ORG_LOC": ["no_relation", "org:member_of", "org:place_of_headquarters", "org:members", "org:political/religious_affiliation", "org:product"],
+            "ORG_POH": ["no_relation", "org:alternate_names", "org:product", "org:political/religious_affiliation", "org:member_of", "org:members"],
+            "ORG_NOH": ["no_relation", "org:number_of_employees/members"],
+            "PER_PER": ["no_relation", "per:colleagues", "per:spouse", "per:children", "per:parents", "per:other_family", "per:siblings", "per:alternate_names", "per:employee_of", "per:product"],
+            "PER_ORG": ["no_relation", "per:employee_of", "per:schools_attended", "per:origin", "per:religion", "per:title", "per:place_of_death", "per:product", "per:place_of_residence"],
+            "PER_DAT": ["no_relation", "per:date_of_birth", "per:date_of_death", "per:origin"],
+            "PER_LOC": ["no_relation", "per:place_of_birth", "per:place_of_residence", "per:place_of_death", "per:origin", "per:employee_of", "per:title"],
+            "PER_POH": ["no_relation", "per:title", "per:alternate_names", "per:product", "per:employee_of", "per:origin", "per:parents", "per:place_of_death", "per:religion", "per:siblings", "per:children", "per:place_of_residence"],
+            "PER_NOH": ["no_relation"],
+            } # subject, object type에 따라서 나올 수 있는 label을 제한하는 dictionary
+        
+        self.type_pair_to_num_label = dict() # restrict dict의 label을 숫자로 바꾼 dictionary
+
+        for key, value in zip(self.restrict_dict.keys(), self.restrict_dict.values()):
+            self.type_pair_to_num_label[key] = label_to_num(value)
+
+        self.classifier_list = torch.nn.ModuleList()
+        for type_pair, labels in zip(self.restrict_dict.keys(), self.restrict_dict.values()):
+            classifier = torch.nn.Sequential(torch.nn.Linear(in_features=self.hidden_size * 2, out_features=self.hidden_size, bias=True), 
+                                             torch.nn.Tanh(),
+                                             torch.nn.Dropout(p=0.1, inplace=False),
+                                             torch.nn.Linear(in_features=self.hidden_size, out_features=len(labels), bias=True))
+            self.classifier_list.add_module(name=type_pair, module=classifier)
+        
+    def forward(self, input):
+        outputs = self.model(
+            input_ids=input["input_ids"].squeeze(),
+            token_type_ids=input["token_type_ids"].squeeze(),
+            attention_mask=input["attention_mask"].squeeze(),
+        )
+
+        pooled_hidden_state = self.pooling(input['input_ids'], outputs['last_hidden_state']) # dim = (batch_size, 2 * hiddendim)
+
+        logits_list = []
+
+        for i in range(pooled_hidden_state.shape[0]):
+            type_pair = f"{input['subject_type'][i]}_{input['object_type'][i]}"
+
+            classifier_output = self.classifier_list.get_submodule(type_pair)(pooled_hidden_state[i]) # output dimension depends on type_pair. dim = (number of possible classes,)
+
+            logits = torch.empty(30).fill_(classifier_output.min() - classifier_output.abs().mean()).to(self.device) # fills the logit value of a not related class about type_pair with a low value.
+            logits[self.type_pair_to_num_label[type_pair]] = classifier_output
+            logits_list.append(logits)
+
+        return {"logits": torch.stack(logits_list)}
+
+
+# test code
+if __name__ == "__main__":
+    import yaml
+    from utils import load_data, preprocessing_dataset
+    from loader import KLUEDataset
+    from transformers import AutoTokenizer
+
+    with open("./config.yaml", "r") as f:
+        cfg = yaml.load(f, Loader=yaml.FullLoader)
+    
+    tokenizer = AutoTokenizer.from_pretrained(cfg['model_name'])
+    model = RECENT(tokenizer, cfg)
+
+    train_df = load_data(cfg["train_dir"])
+    train_df = preprocessing_dataset(train_df)
+    train_dataset = KLUEDataset(train_df, tokenizer, "entity_marker_punct", cfg['model_class'])
+
+    print(model.forward(train_dataset[0]))

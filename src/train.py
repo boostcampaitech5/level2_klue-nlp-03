@@ -4,7 +4,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 
-from models import BaseModel, BinaryClassifier, ModelWithEntityMarker
+from models import BaseModel, BinaryClassifier, ModelWithEntityMarker, RECENT
 from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
@@ -140,7 +140,7 @@ def train(cfg, result_name :Optional[str] = None):
             wandb.finish()
             print('deleteing wandb run : {}'.format(logger.version))
             api = wandb.Api()
-            run = api.run("ggul_tiger/KLUE/{}".format(logger.version))
+            run = api.run("ggul_tiger/{}/{}".format(cfg["project_name"], logger.version))
             run.delete(delete_artifacts=True)
 
             if os.path.exists('results/{}'.format(result_name)):

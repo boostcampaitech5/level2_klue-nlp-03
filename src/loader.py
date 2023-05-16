@@ -30,6 +30,8 @@ class KLUEDataset(Dataset):
             "token_type_ids": tokenized_sentence["token_type_ids"],
             "attention_mask": tokenized_sentence["attention_mask"],
             "labels": torch.tensor(self.label[idx]),
+            "subject_type": tokenized_sentence["subject_type"],
+            "object_type": tokenized_sentence["object_type"],
         }
         if self.save_sentence:
             ret_dict["sentence"] = item["sentence"]
@@ -60,6 +62,9 @@ class KLUEDataset(Dataset):
         subj_type = item["subject_entity"]["type"]
         obj_type = item["object_entity"]["type"]
 
+        if subj_type in ["LOC", "DAT", "POH", "NOH"]: # subject type 변경
+            subj_type = "ORG"
+
         # tokienize item with masking or marking
         sent = item['sentence']
 
@@ -73,10 +78,10 @@ class KLUEDataset(Dataset):
 
         # Case 01 : entity_mask
         if self.input_format == 'entity_mask':
-            subj_type = f'[S-{subj_type}]'
-            obj_type = f'[O-{obj_type}]'
-            sent = sent.replace(subj_word, subj_type)
-            sent = sent.replace(obj_word, obj_type)
+            subj_mask = f'[S-{subj_type}]'
+            obj_mask = f'[O-{obj_type}]'
+            sent = sent.replace(subj_word, subj_mask)
+            sent = sent.replace(obj_word, obj_mask)
 
          # Case 02 : entity_marker
         elif self.input_format == 'entity_marker':
@@ -95,16 +100,16 @@ class KLUEDataset(Dataset):
         # Case 04 : typed_entity_marker
         elif self.input_format == 'typed_entity_marker':
             # change format of subj/obj type 
-            subj_type1 = '[S-{}]'.format(subj_type)
-            subj_type2 = '[/S-{}]'.format(subj_type)
-            obj_type1 = '[O-{}]'.format(obj_type)
-            obj_type2 = '[/O-{}]'.format(obj_type)
+            subj_start_token = '[S-{}]'.format(subj_type)
+            subj_end_token = '[/S-{}]'.format(subj_type)
+            obj_start_token = '[O-{}]'.format(obj_type)
+            obj_end_token = '[/O-{}]'.format(obj_type)
 
             # add marker token
             subj_idx = sent.find(subj_word)
-            sent = sent[:subj_idx] + subj_type1 + subj_word + subj_type2 + sent[subj_idx+len(subj_word):]
+            sent = sent[:subj_idx] + subj_start_token + subj_word + subj_end_token + sent[subj_idx+len(subj_word):]
             obj_idx = sent.find(obj_word)
-            sent = sent[:obj_idx] + obj_type1 + obj_word + obj_type2 + sent[obj_idx+len(obj_word):]
+            sent = sent[:obj_idx] + subj_start_token + obj_word + obj_end_token + sent[obj_idx+len(obj_word):]
 
         # Case 05 : typed_entity_marker_punct
         elif self.input_format == 'typed_entity_marker_punct':
@@ -126,6 +131,9 @@ class KLUEDataset(Dataset):
             truncation=True,
             return_tensors="pt",
         )
+
+        tokenized_sentence["subject_type"] = subj_type
+        tokenized_sentence["object_type"] = obj_type
         
         return tokenized_sentence
     
@@ -164,6 +172,16 @@ class KLUEDataLoader(pl.LightningDataModule):
             train_df = preprocessing_dataset(train_df)
             val_df = load_data(self.cfg["val_dir"])
             val_df = preprocessing_dataset(val_df)
+
+            # RECENT 모델은 subject-object type pair에 따라서 독립적인 여러 개의 classifier가 있습니다.
+            # 그렇기 때문에 한 batch 안에 여러 종류의 type pair가 들어가면, 어떤 classifier는 아주 적은 데이터로 loss를 계산하고 학습하게 됩니다.
+            # (batch size가 작아지는 효과와 같습니다.)
+            # 그렇기 때문에 type pair로 정렬해줍니다. 이렇게 되면 한 batch 안에 최대한 적은 종류의 type pair가 들어가게 됩니다.
+            if self.cfg["model_class"] == "RECENT":
+                train_df["type_pair"] = train_df.apply(lambda x: f"{x['subject_entity']['type']}_{x['object_entity']['type']}", axis=1)
+                train_df.sort_values(by="type_pair", inplace=True)
+                train_df.drop("type_pair", axis=1, inplace=True)
+
             self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
             self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'], save_sentence=True)
 
@@ -177,13 +195,12 @@ class KLUEDataLoader(pl.LightningDataModule):
             self.train_dataset,
             batch_size=self.cfg["batch_size"],
             num_workers=self.cfg["num_workers"],
-            shuffle=True
+            shuffle=True if self.cfg["model_class"] != "RECENT" else False # 정렬한 데이터를 다시 섞지 않기 위함.
         )
 
     def val_dataloader(self):
         return DataLoader(
             self.val_dataset,
-            shuffle=True,
             batch_size=self.cfg["val_batch_size"],
             num_workers=self.cfg["num_workers"],
         )
