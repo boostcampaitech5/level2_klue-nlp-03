@@ -57,8 +57,13 @@ class KLUEDataset(Dataset):
             return tokenized_sentence
         
         # Case 01 ~ 05
-        subj_type = item["subject_entity"]["type"]
-        obj_type = item["object_entity"]["type"]
+        type_convert = {'PER':'사람', 'ORG':'조직','LOC':'지역','NOH':'숫자','POH':'기타','DAT':'날짜'}
+        try: 
+            subj_type = type_convert[item["subject_entity"]["type"]]
+            obj_type = type_convert[item["object_entity"]["type"]]
+        except: 
+            subj_type = item["subject_entity"]["type"]
+            obj_type = item["object_entity"]["type"]
 
         # tokienize item with masking or marking
         sent = item['sentence']
