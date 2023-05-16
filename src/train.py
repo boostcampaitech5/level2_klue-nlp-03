@@ -143,7 +143,7 @@ def train(cfg, result_name :Optional[str] = None):
             wandb.finish()
             print('deleteing wandb run : {}'.format(logger.version))
             api = wandb.Api()
-            run = api.run("ggul_tiger/KLUE/{}".format(logger.version))
+            run = api.run("ggul_tiger/huggingface_model/{}".format(logger.version))####
             run.delete(delete_artifacts=True)
 
             if os.path.exists('results/{}'.format(result_name)):
