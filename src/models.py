@@ -41,7 +41,7 @@ class BaseModel(pl.LightningModule):
     def forward(self, input):
         return self.model(
             input_ids=input["input_ids"].squeeze(),
-            token_type_ids=input["token_type_ids"].squeeze(),
+            # token_type_ids=input["token_type_ids"].squeeze(),
             attention_mask=input["attention_mask"].squeeze(),
         )
 
@@ -157,7 +157,7 @@ class ModelWithEntityMarker(BaseModel):
     def forward(self, input):
         outputs = self.model(
             input_ids=input["input_ids"].squeeze(),
-            token_type_ids=input["token_type_ids"].squeeze(),
+            # token_type_ids=input["token_type_ids"].squeeze(),
             attention_mask=input["attention_mask"].squeeze(),
         )
         outputs = self.pooling(input['input_ids'], outputs['last_hidden_state'])
