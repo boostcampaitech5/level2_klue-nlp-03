@@ -106,6 +106,9 @@ def train(cfg, result_name :Optional[str] = None):
             test_result_df.to_csv(
                 cfg["result_dir"] + result_name + "/test_result.csv", index=False
             )
+            
+            df2fig(test_result_df, cfg["result_dir"] + result_name + "/figure.png")
+
 
             # inference stage
             predictions = trainer.predict(
