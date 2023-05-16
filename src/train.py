@@ -9,7 +9,7 @@ from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-from utils import get_result_name, num_to_label, remove_pad_tokens,  tokenizer_update
+from utils import get_result_name, num_to_label, remove_pad_tokens,  tokenizer_update, df2fig
 from typing import Optional
 import os
 import wandb
