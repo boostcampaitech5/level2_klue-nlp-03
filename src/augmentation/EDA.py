@@ -24,6 +24,8 @@ def get_only_hangul(line):
 ########################################################################
 def synonym_replacement(words: List[str], n: int)->List[str]:
 	new_words = words.copy()
+	new_words = list(map(get_only_hangul, new_words))
+	new_words = [word for word in new_words if word!='']
 
 	random_word_list=[]
 	for word in words:
@@ -122,6 +124,9 @@ def swap_word(new_words:List[str]):
 ########################################################################
 def random_insertion(words, n):
 	new_words = words.copy()
+	new_words = list(map(get_only_hangul, new_words))
+	new_words = [word for word in new_words if word!='']
+
 	for _ in range(n):
 		add_word(new_words)
 	
@@ -146,23 +151,26 @@ def add_word(new_words):
 	random_idx = random.randint(0, len(new_words)-1)
 	new_words.insert(random_idx, random_synonym)
 
+########################################################################
+
 def restore(aug_s:str,subj:str,obj:str)->Tuple[str,int,int,int,int]:
 	sub_pos=aug_s.find('@')
 	obj_pos=aug_s.find('#')
 	if sub_pos<obj_pos:
-		aug_s.replace('@',subj)
+		# 복원시에는 앞에 오는 것 부터 처리
+		aug_s=aug_s.replace('@',subj)
 		subject_start=sub_pos
 		subject_end=sub_pos+len(subj)-1
 		obj_pos=aug_s.find('#')
-		aug_s.replace('#',obj)
+		aug_s=aug_s.replace('#',obj)
 		object_start=obj_pos
 		object_end=obj_pos+len(obj)-1
 	else:
-		aug_s.replace('#',obj)
+		aug_s=aug_s.replace('#',obj)
 		object_start=obj_pos
 		object_end=obj_pos+len(obj)-1
 		sub_pos=aug_s.find('@')
-		aug_s.replace('@',subj)
+		aug_s=aug_s.replace('@',subj)
 		subject_start=sub_pos
 		subject_end=sub_pos+len(subj)-1
 	return aug_s, subject_start, subject_end, object_start, object_end
@@ -325,3 +333,40 @@ def EDA_DataFrame(
 	print(new_df['label'].value_counts())
 
 	return new_df.sample(frac=1).reset_index(drop=True)
+
+
+if __name__=="__main__":
+
+	def preprocessing_dataset(df: pd.DataFrame) -> pd.DataFrame:
+		"""처음 불러온 csv 파일을 원하는 형태의 DataFrame으로 변경 시켜줍니다."""
+		subject_entity = []
+		object_entity = []
+		for sub, obj in zip(df["subject_entity"], df["object_entity"]):
+			sub = eval(sub)
+			obj = eval(obj)
+			subject_entity.append(sub)
+			object_entity.append(obj)
+		out_dataset = pd.DataFrame(
+			{
+				"id": df["id"],
+				"sentence": df["sentence"],
+				"subject_entity": subject_entity,
+				"object_entity": object_entity,
+				"label": df["label"],
+			}
+		)
+
+		return out_dataset	
+
+
+	df = pd.read_csv('./data/split_train_data.csv')
+	df = preprocessing_dataset(df)
+	augmented_df = EDA_DataFrame(
+		df=df,
+		aug_per_label=500,
+		rd=True,
+		rs=True,
+		ri=False,
+		sr=False,
+	)
+	augmented_df.to_csv("./data/split_train_data_EDA_500.csv")
