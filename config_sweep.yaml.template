@@ -37,11 +37,19 @@ parameters:
   epoch: 
     value: 1
   loss: 
-    value: CrossEntropyLoss
+    value: nn.CrossEntropyLoss
   optim: 
     value: AdamW
   patience:
     value: 10
+
+  label_smoothing:
+    value: 0.0
+  class_weight:
+    value: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  FocalLoss_gamma:
+    value: 2
+  
   model_class:
     values: [BaseModel] # BaseModel, ModelWithBinaryClassification, ModelWithEntityMarker
   input_format:

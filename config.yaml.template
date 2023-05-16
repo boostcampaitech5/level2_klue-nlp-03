@@ -15,10 +15,12 @@ predict_batch_size: 32
 max_len: 256
 val_size: 0.2
 epoch: 10
-loss: CrossEntropyLoss
+loss: nn.CrossEntropyLoss # nn.CrossEntropyLoss, custom_loss.FocalLoss
 optim: AdamW
 patience: 10
 label_smoothing: 0.0 # 0.0 (default), 0.1
+class_weight: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+FocalLoss_gamma: 2
 
 model_class: ModelWithEntityMarker # BaseModel, ModelWithEntityMarker, BinaryClassifier
 input_format: typed_entity_marker_punct # default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
