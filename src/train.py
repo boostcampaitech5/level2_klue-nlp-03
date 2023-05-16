@@ -9,7 +9,7 @@ from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-from utils import get_result_name, num_to_label, remove_pad_tokens,  tokenizer_update
+from utils import get_result_name, num_to_label, remove_pad_tokens,  tokenizer_update, df2fig
 from typing import Optional
 import os
 import wandb
@@ -106,6 +106,9 @@ def train(cfg, result_name :Optional[str] = None):
             test_result_df.to_csv(
                 cfg["result_dir"] + result_name + "/test_result.csv", index=False
             )
+            
+            df2fig(test_result_df, cfg["result_dir"] + result_name)
+
 
             # inference stage
             predictions = trainer.predict(
@@ -140,7 +143,7 @@ def train(cfg, result_name :Optional[str] = None):
             wandb.finish()
             print('deleteing wandb run : {}'.format(logger.version))
             api = wandb.Api()
-            run = api.run("ggul_tiger/KLUE/{}".format(logger.version))
+            run = api.run("ggul_tiger/{}/{}".format(cfg["project_name"], logger.version))
             run.delete(delete_artifacts=True)
 
             if os.path.exists('results/{}'.format(result_name)):
