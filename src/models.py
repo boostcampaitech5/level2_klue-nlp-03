@@ -139,6 +139,7 @@ class ModelWithEntityMarker(BaseModel):
         self.model_resize()
         # self.model = model_freeze(self.model)
         self.lossF = eval("torch.nn." + cfg["loss"])(label_smoothing=self.cfg['label_smoothing'])
+
         self.hidden_size = self.model.config.hidden_size
         self.pooler = torch.nn.Linear(self.hidden_size*2, self.hidden_size, bias=True)
         self.classifier = torch.nn.Linear(self.hidden_size, num_labels, bias=True)
@@ -304,7 +305,18 @@ class TripleClassifier(ModelWithEntityMarker):
     '''
     def __init__(self, tokenizer, cfg: dict, num_labels=3):
         super().__init__(tokenizer, cfg, num_labels=3)
+        self.lossF = eval("torch.nn." + cfg["loss"])(
+            weight=torch.Tensor([cfg['class_weight'],1.0, 1.0]),
+            label_smoothing=self.cfg['label_smoothing']
+            )
         self.classifier = torch.nn.Linear(self.hidden_size, num_labels)
+        self.test_result = {
+            "sentence": [],
+            "tokenized": [],
+            "target": [],
+            "predict": [],
+            "probs":[]
+        }
 
     def compute_metrics(self, result):
         """loss와 score를 계산하는 함수"""
@@ -312,12 +324,12 @@ class TripleClassifier(ModelWithEntityMarker):
         probs = F.softmax(logits, dim=1)
         preds = torch.argmax(probs, dim=1)
         labels = result["labels"]
-        loss = self.lossF(logits, labels)
+        loss = self.lossF(logits.to(self.device), labels.to(self.device))
         # calculate accuracy using sklearn's function
         precision, recall, f1, _ =  precision_recall_fscore_support(labels, preds, average='micro')
         acc = accuracy_score(labels, preds)  # 리더보드 평가에는 포함되지 않습니다.
 
-        return {"loss": loss, "micro_F1_score": f1, "precision": precision, "accuracy": acc}
+        return {"loss": loss.detach().cpu(), "micro_F1_score": f1, "precision": precision, "accuracy": acc}
     def on_validation_epoch_end(self):
         metrics = self.compute_metrics(self.val_epoch_result)
         self.log("val_loss", metrics["loss"], sync_dist=True)
@@ -326,3 +338,19 @@ class TripleClassifier(ModelWithEntityMarker):
         self.log("val_accuracy", metrics["accuracy"], sync_dist=True)
         self.val_epoch_result["logits"] = torch.tensor([], dtype=torch.float32)
         self.val_epoch_result["labels"] = torch.tensor([], dtype=torch.int64)
+
+    def test_step(self, batch, batch_idx):
+        output = self.forward(batch)
+
+        # 원래 문장, 원래 target, 모델의 prediction을 저장
+        self.test_result["sentence"].extend(batch["sentence"])
+        self.test_result["tokenized"].extend(
+            self.tokenizer.batch_decode(batch["input_ids"].squeeze())
+        )
+        self.test_result["target"].extend(batch["labels"].tolist())
+        self.test_result["predict"].extend(
+            torch.argmax(output["logits"], dim=1).tolist()
+        )
+        self.test_result["probs"].extend(
+            F.softmax(output["logits"], dim=1).tolist()
+        )
