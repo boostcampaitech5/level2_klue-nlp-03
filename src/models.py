@@ -18,7 +18,7 @@ class BaseModel(pl.LightningModule):
         )
         self.model_resize()
         self.lossF = eval(cfg["loss"])
-        class_weight = torch.tensor(cfg["class_weight"], dtype=torch.float32).to(self.device)
+        class_weight = torch.tensor(cfg["class_weight"], dtype=torch.float32).to("cuda:0")
 
         if cfg["loss"] == "nn.CrossEntropyLoss":
             self.lossF = self.lossF(weight=class_weight, label_smoothing=self.cfg["label_smoothing"])
@@ -147,7 +147,6 @@ class ModelWithEntityMarker(BaseModel):
         self.model = AutoModel.from_pretrained(cfg["model_name"])
         self.model_resize()
         # self.model = model_freeze(self.model)
-        self.lossF = eval("torch.nn." + cfg["loss"])(label_smoothing=self.cfg['label_smoothing'])
         self.hidden_size = self.model.config.hidden_size
         self.pooler = torch.nn.Linear(self.hidden_size*2, self.hidden_size, bias=True)
         self.classifier = torch.nn.Linear(self.hidden_size, num_labels, bias=True)
