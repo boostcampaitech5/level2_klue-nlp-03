@@ -70,36 +70,36 @@ class KLUEDataset(Dataset):
 
         subj_word = item["subject_entity"]["word"]
         subj_start = item["subject_entity"]["start_idx"]
-        subj_end = item["subject_entity"]["end_idx"]
+        subj_end = item["subject_entity"]["end_idx"]+1
 
         obj_word = item["object_entity"]["word"]
         obj_start = item["object_entity"]["start_idx"]
-        obj_end = item["object_entity"]["end_idx"]
+        obj_end = item["object_entity"]["end_idx"]+1
 
-        # 일단 word가 등장하는 모든 index를 구하고 몇번째 등장하는 word가 subject/object인지 subj_idx/obj_idx에 저장
-        subj_idx=None
-        for i, match in enumerate(re.finditer(subj_word, sent)):
-            start,e = match.span()
-            if start==subj_start:
-                subj_idx = i
-                break
+        # # 일단 word가 등장하는 모든 index를 구하고 몇번째 등장하는 word가 subject/object인지 subj_idx/obj_idx에 저장
+        # subj_idx=None
+        # for i, match in enumerate(re.finditer(subj_word, sent)):
+        #     start,e = match.span()
+        #     if start==subj_start:
+        #         subj_idx = i
+        #         break
 
-        obj_idx=None
-        for i, match in enumerate(re.finditer(obj_word, sent)):
-            start,e = match.span()
-            if start==obj_start:
-                obj_idx = i
-                break
+        # obj_idx=None
+        # for i, match in enumerate(re.finditer(obj_word, sent)):
+        #     start,e = match.span()
+        #     if start==obj_start:
+        #         obj_idx = i
+        #         break
 
         # preprocessing
         sent = self.preprocessing(sent)
         subj_word = self.preprocessing(subj_word)
         obj_word = self.preprocessing(obj_word)
 
-        subj_matches = list(re.finditer(re.escape(subj_word), sent))
-        subj_start, subj_end = subj_matches[subj_idx].span()
-        obj_matches = list(re.finditer(re.escape(obj_word), sent))
-        obj_start, obj_end = obj_matches[obj_idx].span()
+        # subj_matches = list(re.finditer(re.escape(subj_word), sent))
+        # subj_start, subj_end = subj_matches[subj_idx].span()
+        # obj_matches = list(re.finditer(re.escape(obj_word), sent))
+        # obj_start, obj_end = obj_matches[obj_idx].span()
 
         # Case 01 : entity_mask
         if self.input_format == 'entity_mask':
@@ -161,11 +161,11 @@ class KLUEDataset(Dataset):
             # add marker token
             if subj_start < obj_start:
                 # subject가 먼저 등장, 뒤에 오는 object부터 처리
-                sent = sent[:obj_start] + '# ^ ' + obj_type + ' ^ ' + obj_word + ' #' + sent[subj_end:]
+                sent = sent[:obj_start] + '# ^ ' + obj_type + ' ^ ' + obj_word + ' #' + sent[obj_end:]
                 sent = sent[:subj_start] + '@ * ' + subj_type + ' * ' + subj_word + ' @' + sent[subj_end:]
             else:
                 sent = sent[:subj_start] + '@ * ' + subj_type + ' * ' + subj_word + ' @' + sent[subj_end:]
-                sent = sent[:obj_start] + '# ^ ' + obj_type + ' ^ ' + obj_word + ' #' + sent[subj_end:]
+                sent = sent[:obj_start] + '# ^ ' + obj_type + ' ^ ' + obj_word + ' #' + sent[obj_end:]
         
         # print(sent)
 
