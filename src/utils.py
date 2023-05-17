@@ -192,7 +192,7 @@ def df2fig(check_result_df:pd.DataFrame, save_path:str):
     label_stats['total'] = label_counts
     label_stats['correct'] = correct_counts
     label_stats['correct_ratio'] = label_stats['correct'] / label_stats['total']
-
+    label_stats = label_stats.reindex(['no_relation', 'org:top_members/employees', 'org:members', 'org:product', 'per:title', 'org:alternate_names', 'per:employee_of', 'org:place_of_headquarters', 'per:product', 'org:number_of_employees/members', 'per:children', 'per:place_of_residence', 'per:alternate_names', 'per:other_family', 'per:colleagues', 'per:origin', 'per:siblings', 'per:spouse', 'org:founded', 'org:political/religious_affiliation', 'org:member_of', 'per:parents', 'org:dissolved', 'per:schools_attended', 'per:date_of_death', 'per:date_of_birth', 'per:place_of_birth', 'per:place_of_death', 'org:founded_by', 'per:religion'])
 
     # 레이블 별 총 데이터 개수와 정답 데이터 개수 비교
     plt.figure(figsize = (35, 15))
