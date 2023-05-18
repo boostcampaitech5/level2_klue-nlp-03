@@ -4,7 +4,8 @@ import numpy as np
 import sklearn
 from datetime import datetime, timezone, timedelta
 from typing import List
-
+import matplotlib.pyplot as plt
+import os
 
 def load_data(data_dir: str) -> pd.DataFrame:
     """csv 파일을 경로에 맞게 불러 옵니다."""
@@ -179,3 +180,64 @@ def model_freeze(model, keys_to_remain:list = []):
             if key in name:
                 param.requires_grad =True
     return model
+
+
+def df2fig(check_result_df:pd.DataFrame, save_path:str):
+    check_result_df['correct'] = check_result_df['target'] == check_result_df['predict']
+
+    # 레이블별 정답률 확인
+    label_stats = pd.DataFrame()
+    label_counts = check_result_df.groupby('target')['predict'].count()
+    correct_counts = check_result_df.groupby('target')['predict'].apply(lambda x: (x == x.name).sum())
+    label_stats['total'] = label_counts
+    label_stats['correct'] = correct_counts
+    label_stats['correct_ratio'] = label_stats['correct'] / label_stats['total']
+    label_stats = label_stats.reindex(['no_relation', 'org:top_members/employees', 'org:members', 'org:product', 'per:title', 'org:alternate_names', 'per:employee_of', 'org:place_of_headquarters', 'per:product', 'org:number_of_employees/members', 'per:children', 'per:place_of_residence', 'per:alternate_names', 'per:other_family', 'per:colleagues', 'per:origin', 'per:siblings', 'per:spouse', 'org:founded', 'org:political/religious_affiliation', 'org:member_of', 'per:parents', 'org:dissolved', 'per:schools_attended', 'per:date_of_death', 'per:date_of_birth', 'per:place_of_birth', 'per:place_of_death', 'org:founded_by', 'per:religion'])
+
+    # 레이블 별 총 데이터 개수와 정답 데이터 개수 비교
+    plt.figure(figsize = (35, 15))
+    plt.subplot(121)
+    plt.bar(label_stats.index, label_stats['total'], label="total")
+    plt.bar(label_stats.index, label_stats['correct'], label="correct")
+    for i in range(len(label_stats)):
+        plt.text(label_stats.index[i], label_stats['total'][i], f"{label_stats['correct_ratio'][i]:.2f}", ha='center', va='bottom')
+    plt.legend()
+    plt.xticks(rotation=-90)
+
+    df = check_result_df[['target','predict']]
+    labels = list(label_stats.index)
+
+    # heatmap
+    new_df = pd.DataFrame()
+
+    for trgt in labels:
+        temp_lst = []
+        for pred in labels:
+            count = len(df[(df['target'] == trgt) & (df['predict'] == pred)])
+            temp_lst.append(count)
+        new_df[trgt] = temp_lst
+    new_df.columns = labels
+    new_df['predict'] = labels
+    new_df.set_index('predict',inplace=True)
+
+    # dataset normalize 하고 heatmap 
+    labels = list(label_stats.index)
+
+    normalization_df = (new_df - new_df.mean())/new_df.std()
+
+    plt.subplot(122)
+
+    plt.pcolor(normalization_df,cmap='Blues')
+
+    plt.xticks(np.arange(0.5, len(labels), 1), labels)
+    plt.xticks(rotation=90)
+    plt.yticks(np.arange(0.5, len(labels), 1), labels)
+
+    plt.title('label accuracy', fontsize=36)
+    plt.xlabel('target', fontsize=14)
+    plt.ylabel('predict', fontsize=14)
+
+    plt.colorbar()
+
+    plt.savefig(os.path.join(save_path, 'figure.png'),bbox_inches='tight')
+    plt.close()

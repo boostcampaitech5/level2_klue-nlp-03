@@ -4,12 +4,12 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 
-from models import BaseModel, BinaryClassifier, ModelWithEntityMarker, RECENT
+from models import BaseModel, BinaryClassifier, ModelWithEntityMarker, TripleClassifier, RECENT
 from loader import KLUEDataLoader
 from transformers import AutoTokenizer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-from utils import get_result_name, num_to_label, remove_pad_tokens,  tokenizer_update
+from utils import get_result_name, num_to_label, remove_pad_tokens,  tokenizer_update, df2fig
 from typing import Optional
 import os
 import wandb
@@ -106,6 +106,9 @@ def train(cfg, result_name :Optional[str] = None):
             test_result_df.to_csv(
                 cfg["result_dir"] + result_name + "/test_result.csv", index=False
             )
+            
+            df2fig(test_result_df, cfg["result_dir"] + result_name)
+
 
             # inference stage
             predictions = trainer.predict(
