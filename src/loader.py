@@ -27,7 +27,7 @@ class KLUEDataset(Dataset):
         tokenized_sentence = self.tokenize(item)
         ret_dict = {
             "input_ids": tokenized_sentence["input_ids"],
-            # "token_type_ids": tokenized_sentence["token_type_ids"],
+            "token_type_ids": tokenized_sentence["token_type_ids"],
             "attention_mask": tokenized_sentence["attention_mask"],
             "labels": torch.tensor(self.label[idx]),
         }
