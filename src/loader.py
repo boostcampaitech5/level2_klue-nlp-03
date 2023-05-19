@@ -59,6 +59,7 @@ class KLUEDataset(Dataset):
             return tokenized_sentence
         
         # Case 01 ~ 05
+            
         type_convert = {'PER':'사람', 'ORG':'조직','LOC':'지역','NOH':'숫자','POH':'기타','DAT':'날짜'}
         try: 
             subj_type = type_convert[item["subject_entity"]["type"]]
@@ -67,8 +68,8 @@ class KLUEDataset(Dataset):
             subj_type = item["subject_entity"]["type"]
             obj_type = item["object_entity"]["type"]
 
-        if subj_type in ["LOC", "DAT", "POH", "NOH"]: # subject type 변경
-            subj_type = "ORG"
+        if subj_type in ["지역", "숫자", "기타", "날짜"]: # subject type을 사람과 조직으로 제한
+            subj_type = "조직"
 
         # tokienize item with masking or marking
         sent = item['sentence']
@@ -227,9 +228,10 @@ class KLUEDataLoader(pl.LightningDataModule):
             # (batch size가 작아지는 효과와 같습니다.)
             # 그렇기 때문에 type pair로 정렬해줍니다. 이렇게 되면 한 batch 안에 최대한 적은 종류의 type pair가 들어가게 됩니다.
             if self.cfg["model_class"] == "RECENT":
-                train_df["type_pair"] = train_df.apply(lambda x: f"{x['subject_entity']['type']}_{x['object_entity']['type']}", axis=1)
-                train_df.sort_values(by="type_pair", inplace=True)
-                train_df.drop("type_pair", axis=1, inplace=True)
+                # train_df["type_pair"] = train_df.apply(lambda x: f"{x['subject_entity']['type']}_{x['object_entity']['type']}", axis=1)
+                train_df["subject_type"] = train_df.apply(lambda x: f"{x['subject_entity']['type']}", axis=1)
+                train_df.sort_values(by="subject_type", inplace=True)
+                train_df.drop("subject_type", axis=1, inplace=True)
 
             self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
             self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'], save_sentence=True)
