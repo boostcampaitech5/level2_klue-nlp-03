@@ -8,7 +8,8 @@
 
 ## Relation Extraction 
 Relation Extraction is the task of predicting attributes and relations between subject and object entity in sentence. 
-![image](https://www.mdpi.com/2079-9292/9/10/1637)
+![image](https://github.com/boostcampaitech5/level2_klue-nlp-03/assets/75467530/795279d0-c017-4eab-8def-3f5621189882)
+
 
 ## Getting started
 
