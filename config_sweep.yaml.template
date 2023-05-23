@@ -12,43 +12,64 @@ parameters:
     values: [3] # e.g. [1,2,3,4,5]
   num_workers: 
     value: 4
+  project_name:
+    value: KLUE2
   
   model_name: 
-    values: [klue/bert-base] # klue/bert-base, klue/bert-large, klue/roberta-base, klue/roberta-large
+    values: [klue/roberta-base] # klue/bert-base, klue/bert-large, klue/roberta-base, klue/roberta-large
   lr: 
-    values: [1e-5, 2e-5, 3e-5, 4e-5, 5e-5] # [1e-5, 2e-5, 3e-5, 4e-5, 5e-5]
-  lr_scheduler: 
-    value: null
+    values: [3e-5] # [1e-5, 2e-5, 3e-5, 4e-5, 5e-5]
+  lr_scheduler:
+    value: StepLR(optimizer, step_size=30, gamma=0.85)
+
   batch_size: 
-    values: [32] # [32, 64]
+    value: 64
   val_batch_size:
-    values: [32]
+    value: 32
   test_batch_size:
-    values: [32]
+    value: 32
   predict_batch_size:
-    values: [32]
+    value: 32
   max_len: 
-    values: [200] # [200,256]
+    value: 256
   val_size: 
-    value: 0.1
+    value: 0.2
   epoch: 
-    value: 10
+    value: 1
   loss: 
-    value: CrossEntropyLoss
+    value: nn.CrossEntropyLoss
   optim: 
     value: AdamW
   patience:
-    value: 5
+    value: 10
+
+  label_smoothing:
+    value: 0.0
+  class_weight:
+    value: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  FocalLoss_gamma:
+    value: 2
+  
+  model_class:
+    values: [BaseModel] # BaseModel, ModelWithBinaryClassification, ModelWithEntityMarker
+  input_format:
+    values: [default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct] 
+    # default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
+  pooling_type: 
+    value: entity_start_token # entity_start_token, entity_start_end_token, entity_tokens
 
   earlystopping_monitor:
     value: val_micro_F1_score
   best_model_monitor: 
     value: val_micro_F1_score
+
   min_epoch_to_log:
-    value: 2
+    value: 0
 
   train_dir: 
-    value: ./data/train_data.csv
+    value: ./data/split_train_data.csv
+  val_dir: 
+    value: ./data/split_val_data.csv
   test_dir: 
     value: ./data/test_data.csv
   result_dir: 

@@ -4,17 +4,19 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from utils import label_to_num, load_data, preprocessing_dataset
+import re 
 
 
 class KLUEDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, tokenizer, input_format,model_class):
+    def __init__(self, df: pd.DataFrame, tokenizer, input_format, model_class, save_sentence=False):
         self.df = df
         self.label = label_to_num(df["label"].to_list())
         self.tokenizer = tokenizer
         self.model_class = model_class
         self.input_format = input_format
+        self.save_sentence = save_sentence
 
-        if self.input_format not in ('default', 'entity_mask', 'entity_marker_punct', 'typed_entity_marker_punct'):
+        if self.input_format not in ('default', 'entity_mask','entity_marker','entity_marker_punct','typed_entity_marker', 'typed_entity_marker_punct'):
             raise Exception("Invalid input format!")
 
     def __len__(self):
@@ -24,12 +26,13 @@ class KLUEDataset(Dataset):
         item = self.df.iloc[idx]
         tokenized_sentence = self.tokenize(item)
         ret_dict = {
-            "sentence": item["sentence"],
             "input_ids": tokenized_sentence["input_ids"],
             "token_type_ids": tokenized_sentence["token_type_ids"],
             "attention_mask": tokenized_sentence["attention_mask"],
             "labels": torch.tensor(self.label[idx]),
         }
+        if self.save_sentence:
+            ret_dict["sentence"] = item["sentence"]
         return ret_dict
     
     # 임시
@@ -42,8 +45,6 @@ class KLUEDataset(Dataset):
         # Case 00 : default (no masking or marking)
         if self.input_format == 'default':
             joined_entity = "[SEP]".join([item["subject_entity"]["word"], item["object_entity"]["word"]])
-            if self.model_class == 'ModelWithBinaryClassification':
-                 joined_entity = "[CLS]" + joined_entity
             # entity를 인식시켜주는 부분과 문장 부분을 서로 다른 token type id로 구별하기 위해서 joined_entity와 sentence를 따로 넣어줌
             tokenized_sentence = self.tokenizer(
                 joined_entity,
@@ -55,38 +56,119 @@ class KLUEDataset(Dataset):
             )
             return tokenized_sentence
         
-        # Case 01 ~ 03
-        subj_type = item["subject_entity"]["type"]
-        obj_type = item["object_entity"]["type"]
+        # Case 01 ~ 05
+        type_convert = {'PER':'사람', 'ORG':'조직','LOC':'지역','NOH':'숫자','POH':'기타','DAT':'날짜'}
+        try: 
+            subj_type = type_convert[item["subject_entity"]["type"]]
+            obj_type = type_convert[item["object_entity"]["type"]]
+        except: 
+            subj_type = item["subject_entity"]["type"]
+            obj_type = item["object_entity"]["type"]
 
         # tokienize item with masking or marking
         sent = item['sentence']
+
         subj_word = item["subject_entity"]["word"]
+        subj_start = item["subject_entity"]["start_idx"]
+        subj_end = item["subject_entity"]["end_idx"]+1
+
         obj_word = item["object_entity"]["word"]
+        obj_start = item["object_entity"]["start_idx"]
+        obj_end = item["object_entity"]["end_idx"]+1
+
+        # # 일단 word가 등장하는 모든 index를 구하고 몇번째 등장하는 word가 subject/object인지 subj_idx/obj_idx에 저장
+        # subj_idx=None
+        # for i, match in enumerate(re.finditer(subj_word, sent)):
+        #     start,e = match.span()
+        #     if start==subj_start:
+        #         subj_idx = i
+        #         break
+
+        # obj_idx=None
+        # for i, match in enumerate(re.finditer(obj_word, sent)):
+        #     start,e = match.span()
+        #     if start==obj_start:
+        #         obj_idx = i
+        #         break
+
+        # preprocessing
+        sent = self.preprocessing(sent)
+        subj_word = self.preprocessing(subj_word)
+        obj_word = self.preprocessing(obj_word)
+
+        # subj_matches = list(re.finditer(re.escape(subj_word), sent))
+        # subj_start, subj_end = subj_matches[subj_idx].span()
+        # obj_matches = list(re.finditer(re.escape(obj_word), sent))
+        # obj_start, obj_end = obj_matches[obj_idx].span()
 
         # Case 01 : entity_mask
         if self.input_format == 'entity_mask':
-            sent = sent.replace(subj_word, subj_type)
-            sent = sent.replace(obj_word, obj_type)
+            subj_type = f'[S-{subj_type}]'
+            obj_type = f'[O-{obj_type}]'
+            if subj_start < obj_start:
+                # subject가 먼저 등장, 뒤에 오는 object부터 처리
+                sent = sent[:obj_start] + obj_type + sent[obj_end:]
+                sent = sent[:subj_start] + subj_type + sent[subj_end:]
+            else:
+                # object가 먼저 등장, 뒤에 오는 subject부터 처리
+                sent = sent[:subj_start] + subj_type + sent[subj_end:]
+                sent = sent[:obj_start] + obj_type + sent[obj_end:]
 
-        # Case 02 : entity_marker_punct
+         # Case 02 : entity_marker
+        elif self.input_format == 'entity_marker':
+            if subj_start < obj_start:
+                # subject가 먼저 등장, 뒤에 오는 object부터 처리
+                sent = sent[:obj_start]+'[E2]'+obj_word+'[/E2]'+sent[obj_end:]
+                sent = sent[:subj_start]+'[E1]'+subj_word+'[/E1]'+sent[subj_end:]
+            else:
+                # object가 먼저 등장, 뒤에 오는 subject부터 처리
+                sent = sent[:subj_start]+'[E1]'+subj_word+'[/E1]'+sent[subj_end:]
+                sent = sent[:obj_start]+'[E2]'+obj_word+'[/E2]'+sent[obj_end:]
+
+        # Case 03 : entity_marker_punct
         elif self.input_format == 'entity_marker_punct':
-            subj_idx = sent.find(subj_word)
-            sent = sent[:subj_idx] + '@' + subj_word + '@' + sent[subj_idx+len(subj_word):]
-            obj_idx = sent.find(obj_word)
-            sent = sent[:obj_idx] + '#' + obj_word + '#' + sent[obj_idx+len(obj_word):]
+            if subj_start < obj_start:
+                # subject가 먼저 등장, 뒤에 오는 object부터 처리
+                sent = sent[:obj_start] + '#' + obj_word + '#' + sent[obj_end:]
+                sent = sent[:subj_start] + '@' + subj_word + '@' + sent[subj_end:]
+            else:
+                sent = sent[:subj_start] + '@' + subj_word + '@' + sent[subj_end:]
+                sent = sent[:obj_start] + '#' + obj_word + '#' + sent[obj_end:]
 
-        # Case 03 : typed_entity_marker_punct
+
+        # Case 04 : typed_entity_marker
+        elif self.input_format == 'typed_entity_marker':
+            # change format of subj/obj type 
+            subj_type1 = '[S-{}]'.format(subj_type)
+            subj_type2 = '[/S-{}]'.format(subj_type)
+            obj_type1 = '[O-{}]'.format(obj_type)
+            obj_type2 = '[/O-{}]'.format(obj_type)
+
+            # add marker token
+            if subj_start < obj_start:
+                # subject가 먼저 등장, 뒤에 오는 object부터 처리
+                sent = sent[:obj_start] + obj_type1 + obj_word + obj_type2 + sent[obj_end:]
+                sent = sent[:subj_start] + subj_type1 + subj_word + subj_type2 + sent[subj_end:]
+            else:
+                sent = sent[:subj_start] + subj_type1 + subj_word + subj_type2 + sent[subj_end:]
+                sent = sent[:obj_start] + obj_type1 + obj_word + obj_type2 + sent[obj_end:]
+
+        # Case 05 : typed_entity_marker_punct
         elif self.input_format == 'typed_entity_marker_punct':
             # change format of subj/obj type 
-            subj_type = self.tokenizer.tokenize(subj_type.replace("_", " ").lower()) 
-            obj_type = self.tokenizer.tokenize(obj_type.replace("_", " ").lower())
+            subj_type = subj_type.replace("_", " ").lower()
+            obj_type = obj_type.replace("_", " ").lower()
             # add marker token
-            subj_idx = sent.find(subj_word)
-            sent = sent[:subj_idx] + '@ * ' + subj_word + '* @' + sent[subj_idx+len(subj_word):]
-            obj_idx = sent.find(obj_word)
-            sent = sent[:obj_idx] + '# ^ ' + obj_word + ' ^ #' + sent[obj_idx+len(obj_word):]
+            if subj_start < obj_start:
+                # subject가 먼저 등장, 뒤에 오는 object부터 처리
+                sent = sent[:obj_start] + '# ^ ' + obj_type + ' ^ ' + obj_word + ' #' + sent[obj_end:]
+                sent = sent[:subj_start] + '@ * ' + subj_type + ' * ' + subj_word + ' @' + sent[subj_end:]
+            else:
+                sent = sent[:subj_start] + '@ * ' + subj_type + ' * ' + subj_word + ' @' + sent[subj_end:]
+                sent = sent[:obj_start] + '# ^ ' + obj_type + ' ^ ' + obj_word + ' #' + sent[obj_end:]
         
+        # print(sent)
+
         tokenized_sentence = self.tokenizer(
             sent,
             add_special_tokens=True,
@@ -96,6 +178,23 @@ class KLUEDataset(Dataset):
         )
         
         return tokenized_sentence
+    
+    def preprocessing(self, sent:str)->str:
+        """구두점 및 이중공백 제거
+
+        Args:
+            sent (str): _description_
+
+        Returns:
+            str: _description_
+        """
+        patterns = [
+                (r'[#@]', '-'),
+            ]
+
+        for old, new in patterns:
+            sent = re.sub(old, new, sent)
+        return sent.strip()
 
 
 class KLUEDataLoader(pl.LightningDataModule):
@@ -110,32 +209,30 @@ class KLUEDataLoader(pl.LightningDataModule):
 
     def setup(self, stage: str):
         if stage == "fit":
-            total_df = load_data(self.cfg["train_dir"])
-            total_df = preprocessing_dataset(total_df)
-            train_df, val_df = train_test_split(
-                total_df,
-                stratify=total_df["label"].values,
-                test_size=self.cfg["val_size"],
-                random_state=self.cfg["seed"],
-            )
+            train_df = load_data(self.cfg["train_dir"])
+            train_df = preprocessing_dataset(train_df)
+            val_df = load_data(self.cfg["val_dir"])
+            val_df = preprocessing_dataset(val_df)
             self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
-            self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
+            self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'], save_sentence=True)
 
         if stage == "predict":
             predict_df = load_data(self.cfg["test_dir"])
             predict_df = preprocessing_dataset(predict_df)
-            self.predict_dataset = KLUEDataset(predict_df, self.tokenizer, self.cfg['input_format'], self.cfg['model_class'])
+            self.predict_dataset = KLUEDataset(predict_df, self.tokenizer, self.cfg['input_format'], self.cfg['model_class'], save_sentence=True)
 
     def train_dataloader(self):
         return DataLoader(
             self.train_dataset,
             batch_size=self.cfg["batch_size"],
             num_workers=self.cfg["num_workers"],
+            shuffle=True
         )
 
     def val_dataloader(self):
         return DataLoader(
             self.val_dataset,
+            shuffle=True,
             batch_size=self.cfg["val_batch_size"],
             num_workers=self.cfg["num_workers"],
         )

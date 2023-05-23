@@ -1,35 +1,40 @@
 # 이 파일을 config.yaml로 이름을 변경하고 사용하세요.
 seed: 3
 num_workers: 4
-project_name: KLUE
+project_name: KLUE2
 
-model_name: klue/roberta-small
-lr: 1e-5
-lr_scheduler: StepLR(optimizer, step_size=2, gamma=0.85)
+model_name: klue/bert-base
+lr: 3e-5
+lr_scheduler: LambdaLR(optimizer, lr_lambda=self.lr_lambda)
 # CosineAnnealingLR(optimizer, T_max=5, eta_min=8e-6)
 # StepLR(optimizer, step_size=2, gamma=0.85)
-batch_size: 32
+batch_size: 64
 val_batch_size: 32
 test_batch_size: 32
 predict_batch_size: 32
-max_len: 200
-val_size: 0.1
-epoch: 2
-loss: CrossEntropyLoss
+max_len: 256
+val_size: 0.2
+epoch: 10
+loss: nn.CrossEntropyLoss # nn.CrossEntropyLoss, custom_loss.FocalLoss
 optim: AdamW
-patience: 5
+patience: 10
 
-model_class: BaseModel # BaseModel, ModelWithBinaryClassification
-input_format: default # select : default, entity_mask, entity_marker_punct, typed_entity_marker_punct
+label_smoothing: 0.0 # 0.0 (default), 0.1
+class_weight: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+# class weight는 CELoss에도 적용되니 주의
+# 아래는 FocalLoss 사용할 때 최적 class weight 값입니다 (레이블 별 데이터 갯수의 역수에 로그를 취한 값)
+# [1.2255, 2.0254, 4.3478, 4.4479, 2.7370, 3.2027, 2.2069, 3.3022, 5.4536, 6.5169, 4.6710, 5.1254, 3.4793, 5.1410, 4.1077, 3.2701, 5.4754, 3.7097, 4.2788, 5.8031, 2.8565, 4.1342, 6.1984, 5.9814, 4.3526, 3.3581, 5.2761, 6.6992, 5.3446, 5.8237]
+FocalLoss_gamma: 1.2 # FocalLoss에 사용할 gamma의 최적값입니다.
 
-lr_scheduler: StepLR(optimizer, step_size=2, gamma=0.85)
-# CosineAnnealingLR(optimizer, T_max=5, eta_min=8e-6)
-# StepLR(optimizer, step_size=2, gamma=0.85)
+model_class: ModelWithEntityMarker # BaseModel, ModelWithEntityMarker, BinaryClassifier
+input_format: typed_entity_marker_punct # default, entity_mask, entity_marker, entity_marker_punct, typed_entity_marker, typed_entity_marker_punct
+pooling_type: entity_start_token # entity_start_token, entity_start_end_token, entity_tokens
 
 earlystopping_monitor: val_micro_F1_score
-best_model_monitor: val_micro_F1_score
+best_model_monitor: val_micro_F1_score # val_micro_F1_score
 
-min_epoch_to_log: 2
-train_dir: ./data/train_data.csv
+min_epoch_to_log: 0
+train_dir: ./data/split_train_data.csv
+val_dir: ./data/split_val_data.csv
 test_dir: ./data/test_data.csv
 result_dir: ./results/
