@@ -30,6 +30,8 @@ class KLUEDataset(Dataset):
             "token_type_ids": tokenized_sentence["token_type_ids"],
             "attention_mask": tokenized_sentence["attention_mask"],
             "labels": torch.tensor(self.label[idx]),
+            "subject_type": tokenized_sentence["subject_type"],
+            "object_type": tokenized_sentence["object_type"],
         }
         if self.save_sentence:
             ret_dict["sentence"] = item["sentence"]
@@ -57,6 +59,7 @@ class KLUEDataset(Dataset):
             return tokenized_sentence
         
         # Case 01 ~ 05
+            
         type_convert = {'PER':'사람', 'ORG':'조직','LOC':'지역','NOH':'숫자','POH':'기타','DAT':'날짜'}
         try: 
             subj_type = type_convert[item["subject_entity"]["type"]]
@@ -64,6 +67,9 @@ class KLUEDataset(Dataset):
         except: 
             subj_type = item["subject_entity"]["type"]
             obj_type = item["object_entity"]["type"]
+
+        if subj_type in ["지역", "숫자", "기타", "날짜"]: # subject type을 사람과 조직으로 제한
+            subj_type = "조직"
 
         # tokienize item with masking or marking
         sent = item['sentence']
@@ -103,16 +109,16 @@ class KLUEDataset(Dataset):
 
         # Case 01 : entity_mask
         if self.input_format == 'entity_mask':
-            subj_type = f'[S-{subj_type}]'
-            obj_type = f'[O-{obj_type}]'
+            subj_type_mask = f'[S-{subj_type}]'
+            obj_type_mask = f'[O-{obj_type}]'
             if subj_start < obj_start:
                 # subject가 먼저 등장, 뒤에 오는 object부터 처리
-                sent = sent[:obj_start] + obj_type + sent[obj_end:]
-                sent = sent[:subj_start] + subj_type + sent[subj_end:]
+                sent = sent[:obj_start] + obj_type_mask + sent[obj_end:]
+                sent = sent[:subj_start] + subj_type_mask + sent[subj_end:]
             else:
                 # object가 먼저 등장, 뒤에 오는 subject부터 처리
-                sent = sent[:subj_start] + subj_type + sent[subj_end:]
-                sent = sent[:obj_start] + obj_type + sent[obj_end:]
+                sent = sent[:subj_start] + subj_type_mask + sent[subj_end:]
+                sent = sent[:obj_start] + obj_type_mask + sent[obj_end:]
 
          # Case 02 : entity_marker
         elif self.input_format == 'entity_marker':
@@ -176,6 +182,9 @@ class KLUEDataset(Dataset):
             truncation=True,
             return_tensors="pt",
         )
+
+        tokenized_sentence["subject_type"] = subj_type
+        tokenized_sentence["object_type"] = obj_type
         
         return tokenized_sentence
     
@@ -213,6 +222,17 @@ class KLUEDataLoader(pl.LightningDataModule):
             train_df = preprocessing_dataset(train_df)
             val_df = load_data(self.cfg["val_dir"])
             val_df = preprocessing_dataset(val_df)
+
+            # RECENT 모델은 subject-object type pair에 따라서 독립적인 여러 개의 classifier가 있습니다.
+            # 그렇기 때문에 한 batch 안에 여러 종류의 type pair가 들어가면, 어떤 classifier는 아주 적은 데이터로 loss를 계산하고 학습하게 됩니다.
+            # (batch size가 작아지는 효과와 같습니다.)
+            # 그렇기 때문에 type pair로 정렬해줍니다. 이렇게 되면 한 batch 안에 최대한 적은 종류의 type pair가 들어가게 됩니다.
+            if self.cfg["model_class"] == "RECENT":
+                # train_df["type_pair"] = train_df.apply(lambda x: f"{x['subject_entity']['type']}_{x['object_entity']['type']}", axis=1)
+                train_df["subject_type"] = train_df.apply(lambda x: f"{x['subject_entity']['type']}", axis=1)
+                train_df.sort_values(by="subject_type", inplace=True)
+                train_df.drop("subject_type", axis=1, inplace=True)
+
             self.train_dataset = KLUEDataset(train_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'])
             self.val_dataset = KLUEDataset(val_df, self.tokenizer, self.cfg['input_format'],self.cfg['model_class'], save_sentence=True)
 
@@ -226,13 +246,12 @@ class KLUEDataLoader(pl.LightningDataModule):
             self.train_dataset,
             batch_size=self.cfg["batch_size"],
             num_workers=self.cfg["num_workers"],
-            shuffle=True
+            shuffle=True if self.cfg["model_class"] != "RECENT" else False # 정렬한 데이터를 다시 섞지 않기 위함.
         )
 
     def val_dataloader(self):
         return DataLoader(
             self.val_dataset,
-            shuffle=True,
             batch_size=self.cfg["val_batch_size"],
             num_workers=self.cfg["num_workers"],
         )
